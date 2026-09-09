@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🚀 Push to GitHub",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/push.js",
+      "console": "integratedTerminal"
+    }
+  ]
+}

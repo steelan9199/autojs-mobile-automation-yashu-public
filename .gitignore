@@ -1,0 +1,14 @@
+# 取消忽略本项目下的 scripts/temp 目录（父级 .gitignore 中 temp/ 规则会忽略它）
+!scripts/temp/
+temp/
+
+# 运行时产物与依赖，不进版本库
+node_modules/
+scripts/task-results/
+scripts/uploads/
+*.log
+scripts/task_records.jsonl
+# 授权文件与试用计数（运行时生成，不进版本库）
+license-key.txt
+.cache_*
+.vscode/settings.json

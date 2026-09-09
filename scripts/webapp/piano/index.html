@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f7f8fa">
+<title>万能音效钢琴</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#f7f8fa; --panel:#fff; --line:#e6e8ec; --txt:#1c1f23; --sub:#8a9099;
+  --accent:#2f6bff; --accent-soft:#eaf0ff;
+  --white-key:#fff; --white-key-dn:#d9e4ff; --black-key:#2b3038; --black-key-dn:#4a6fd8;
+}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--txt);
+  display:flex;flex-direction:column;
+  user-select:none;-webkit-user-select:none;touch-action:none;
+}
+/* ---------- 顶部 ---------- */
+header{
+  flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
+  padding:10px 12px 8px;padding-top:calc(10px + env(safe-area-inset-top));
+}
+.row{display:flex;align-items:center;gap:8px}
+.title{font-size:15px;font-weight:700;letter-spacing:.3px}
+.title small{font-weight:500;color:var(--sub);font-size:11px;margin-left:6px}
+/* 音色选择 */
+.timbres{
+  display:flex;gap:6px;overflow-x:auto;padding:8px 0 4px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.timbres::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto;padding:7px 14px;border-radius:999px;font-size:13px;
+  background:#f1f3f6;color:#5a616b;border:1px solid transparent;
+  transition:.15s;white-space:nowrap;
+}
+.chip.on{background:var(--accent);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(47,107,255,.3)}
+.chip.sfx{background:#fff5e8;color:#a06a20;border-color:#ffe0b8}
+.chip.sfx.on{background:#f0932b;color:#fff;border-color:#f0932b}
+/* ---------- 控制条 ---------- */
+.ctrl{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding-top:6px;border-top:1px dashed var(--line);margin-top:6px;
+}
+.btn{
+  padding:6px 11px;border-radius:8px;background:#f1f3f6;color:#4a515b;
+  font-size:12px;border:none;
+}
+.btn.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.btn:active{transform:scale(.96)}
+.oct{display:flex;align-items:center;gap:4px;margin-left:auto}
+.oct button{width:30px;height:28px;font-size:16px;line-height:1;padding:0}
+.oct span{font-size:12px;color:var(--sub);min-width:52px;text-align:center}
+input[type=range]{width:82px;accent-color:var(--accent)}
+.hint{font-size:11px;color:var(--sub);margin-left:4px}
+/* ---------- 键盘 ---------- */
+.stage{
+  flex:1 1 auto;display:flex;align-items:stretch;justify-content:center;
+  padding:10px 8px calc(10px + env(safe-area-inset-bottom));min-height:0;
+}
+.keyboard{position:relative;width:100%;max-width:1000px;display:flex;touch-action:none}
+.key{position:relative;touch-action:none}
+.white{
+  flex:1 1 0;background:linear-gradient(#fff 0%,#fbfbfc 78%,#eeeef1 100%);
+  border:1px solid #d6d9de;border-radius:0 0 7px 7px;margin-right:-1px;
+  box-shadow:0 2px 3px rgba(0,0,0,.06);display:flex;align-items:flex-end;justify-content:center;
+  padding-bottom:8px;
+}
+.white.dn{background:linear-gradient(#c9dbff 0%,#a9c6ff 100%);box-shadow:inset 0 3px 8px rgba(47,107,255,.25)}
+.black{
+  position:absolute;top:0;width:6.4%;height:62%;z-index:3;
+  background:linear-gradient(#3a4048 0%,#22262c 70%,#11141a 100%);
+  border-radius:0 0 5px 5px;box-shadow:0 3px 6px rgba(0,0,0,.35);
+}
+.black.dn{background:linear-gradient(#5b82e0 0%,#3a5fc0 100%)}
+.lbl{font-size:10px;color:var(--sub);pointer-events:none;letter-spacing:.2px}
+.black .lbl{color:#8d949e;position:absolute;bottom:6px;width:100%;text-align:center;font-size:9px}
+.white .lbl{position:absolute;bottom:6px}
+/* 加载遮罩 */
+#mask{
+  position:fixed;inset:0;background:rgba(247,248,250,.92);z-index:50;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  font-size:14px;color:var(--sub);transition:opacity .3s;
+}
+#mask.hide{opacity:0;pointer-events:none}
+.spin{width:34px;height:34px;border:3px solid #dfe3e9;border-top-color:var(--accent);
+  border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#toast{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+  background:rgba(28,31,35,.88);color:#fff;padding:10px 18px;border-radius:10px;
+  font-size:13px;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;
+}
+#toast.show{opacity:1}
+@media (orientation:portrait) and (max-width:500px){
+  .lbl{display:none}
+  #rot{display:flex}
+}
+#rot{
+  display:none;position:fixed;left:0;right:0;bottom:calc(6px + env(safe-area-inset-bottom));
+  justify-content:center;font-size:11px;color:var(--sub);z-index:20;pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="row"><div class="title">万能音效钢琴 <small id="sub">真实乐器采样 · 多指和弦</small></div></div>
+  <div class="timbres" id="timbres"></div>
+  <div class="ctrl">
+    <button class="btn" id="btnLabel">音名 关</button>
+    <button class="btn on" id="btnSustain">延音 开</button>
+    <button class="btn" id="btnGlide">滑音 关</button>
+    <div class="oct">
+      <button class="btn" id="octDown">◀</button>
+      <span id="octInfo">C4 – C6</span>
+      <button class="btn" id="octUp">▶</button>
+    </div>
+  </div>
+</header>
+
+<div class="stage"><div class="keyboard" id="kb"></div></div>
+<div id="rot">↻ 横屏可获得更宽的琴键</div>
+<div id="mask"><div class="spin"></div><div id="maskTxt">正在加载音色…</div></div>
+<div id="toast"></div>
+
+<script>
+/* ============ 配置 ============ */
+const MANIFEST_URL = 'manifest.json';
+const EMBED = window.__AUDIO__ || null;   // 单文件离线版：内嵌的 base64 音频
+const OFFLINE = !!EMBED;
+const LOW = 48, SPAN = 25;          // 起始 MIDI(C3) 与键数
+let baseMidi = 60;                  // 当前键盘最低音 (C4)
+const WHITE_SET = [0,2,4,5,7,9,11]; // 白键 pitch class
+
+let ctx = null, master = null, comp = null;
+let manifest = {}, current = null;
+let cache = {};                     // timbreName -> {midi: AudioBuffer}
+let voices = new Map();             // midi -> {src, gain}
+let showLabel = false, sustain = true, glide = false;
+
+const NOTE_CN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const midiName = m => NOTE_CN[m % 12] + (Math.floor(m / 12) - 1);
+
+/* ============ 音频引擎 ============ */
+function initAudio() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.knee.value = 24;
+  comp.ratio.value = 8; comp.attack.value = .003; comp.release.value = .25;
+  master = ctx.createGain(); master.gain.value = .9;
+  comp.connect(master); master.connect(ctx.destination);
+}
+function resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
+
+/** base64 -> ArrayBuffer（离线单文件版用） */
+function b64ToBuf(s) {
+  const bin = atob(s), b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  return b.buffer;
+}
+
+async function loadTimbre(name) {
+  if (cache[name]) return cache[name];
+  const info = manifest[name];
+  const entries = Object.entries(info.notes);
+  const bufs = {};
+  if (EMBED && EMBED[name]) {                       // 离线单文件：直接解码内嵌数据
+    for (const [m] of entries) {
+      const d = EMBED[name][m];
+      if (!d) continue;
+      bufs[m] = await ctx.decodeAudioData(b64ToBuf(d).slice(0));
+    }
+  } else {                                          // 在线/本地服务：按需 fetch
+    await Promise.all(entries.map(async ([m, file]) => {
+      const url = `samples/${name}/${file}.mp3`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('404 ' + url);
+      bufs[m] = await ctx.decodeAudioData(await res.arrayBuffer());
+    }));
+  }
+  cache[name] = bufs;
+  return bufs;
+}
+
+/** 找离目标音高最近的采样点，并计算变调速率 */
+function pick(bufs, midi) {
+  let best = null, dist = 1e9;
+  for (const m in bufs) {
+    const d = Math.abs(+m - midi);
+    if (d < dist) { dist = d; best = +m; }
+  }
+  return { buf: bufs[best], rate: Math.pow(2, (midi - best) / 12), dist };
+}
+
+function noteOn(midi, vel = .85) {
+  if (!current) return;
+  initAudio(); resume();
+  const bufs = cache[current];
+  if (!bufs) return;
+  noteOff(midi, true);
+  const { buf, rate } = pick(bufs, midi);
+  if (!buf) return;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = rate;
+  const g = ctx.createGain();
+  const peak = vel * .9;
+  g.gain.setValueAtTime(0, ctx.currentTime);
+  g.gain.linearRampToValueAtTime(peak, ctx.currentTime + .006);
+  src.connect(g); g.connect(comp);
+  src.start();
+  voices.set(midi, { src, g });
+  src.onended = () => { if (voices.get(midi)?.src === src) voices.delete(midi); };
+}
+
+function noteOff(midi, immediate = false) {
+  const v = voices.get(midi);
+  if (!v) return;
+  voices.delete(midi);
+  const t = ctx.currentTime;
+  if (sustain && !immediate) {
+    // 延音：模拟松开制音器后的自然衰减（1.2s）
+    v.g.gain.cancelScheduledValues(t);
+    v.g.gain.setValueAtTime(v.g.gain.value, t);
+    v.g.gain.exponentialRampToValueAtTime(.0001, t + 1.2);
+    try { v.src.stop(t + 1.3); } catch (e) {}
+  } else {
+    v.g.gain.cancelScheduledValues(t);
+    v.g.gain.setValueAtTime(v.g.gain.value, t);
+    v.g.gain.exponentialRampToValueAtTime(.0001, t + .08);
+    try { v.src.stop(t + .1); } catch (e) {}
+  }
+}
+
+/* ============ 键盘 UI ============ */
+const kb = document.getElementById('kb');
+let keyEls = new Map();
+
+function buildKeyboard() {
+  kb.innerHTML = ''; keyEls.clear();
+  const whites = [], blacks = [];
+  for (let i = 0; i < SPAN; i++) {
+    const m = baseMidi + i;
+    (WHITE_SET.includes(m % 12) ? whites : blacks).push(m);
+  }
+  // 先铺白键
+  whites.forEach(m => {
+    const d = document.createElement('div');
+    d.className = 'key white'; d.dataset.midi = m;
+    d.innerHTML = `<span class="lbl">${midiName(m)}</span>`;
+    kb.appendChild(d); keyEls.set(m, d);
+  });
+  // 再叠黑键：定位在两个白键交界处
+  const wEls = [...kb.querySelectorAll('.white')];
+  const wCount = whites.length;
+  blacks.forEach(m => {
+    // 该黑键之前有多少个白键
+    let wBefore = 0;
+    for (let i = 0; i < SPAN; i++) {
+      const mm = baseMidi + i;
+      if (mm === m) break;
+      if (WHITE_SET.includes(mm % 12)) wBefore++;
+    }
+    const d = document.createElement('div');
+    d.className = 'key black'; d.dataset.midi = m;
+    d.style.left = `calc(${(wBefore / wCount) * 100}% - 3.2%)`;
+    d.innerHTML = `<span class="lbl">${midiName(m)}</span>`;
+    kb.appendChild(d); keyEls.set(m, d);
+  });
+  document.getElementById('octInfo').textContent =
+    `${midiName(baseMidi)} – ${midiName(baseMidi + SPAN - 1)}`;
+  applyLabel();
+}
+function applyLabel() {
+  kb.querySelectorAll('.lbl').forEach(e => e.style.display = showLabel ? 'block' : 'none');
+}
+
+/* ============ 触控 ============ */
+let active = new Map();  // pointerId -> midi
+function midiFromPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (el && el.dataset && el.dataset.midi) return +el.dataset.midi;
+  if (el && el.classList.contains('lbl')) {
+    const p = el.parentElement;
+    if (p && p.dataset.midi) return +p.dataset.midi;
+  }
+  return null;
+}
+function press(id, midi, force) {
+  if (midi == null) return;
+  if (active.get(id) === midi) return;
+  if (active.get(id) != null) release(id);
+  active.set(id, midi);
+  const el = keyEls.get(midi);
+  if (el) el.classList.add('dn');
+  const vel = force && force > 0 ? Math.min(1, .45 + force * .6) : .85;
+  noteOn(midi, vel);
+}
+function release(id) {
+  const midi = active.get(id);
+  if (midi == null) return;
+  active.delete(id);
+  const el = keyEls.get(midi);
+  if (el) el.classList.remove('dn');
+  noteOff(midi);
+}
+['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach(ev => {
+  kb.addEventListener(ev, e => {
+    e.preventDefault();
+    initAudio();
+    if (ev === 'pointerdown') {
+      kb.setPointerCapture?.(e.pointerId);
+      press(e.pointerId, midiFromPoint(e.clientX, e.clientY), e.pressure);
+    } else if (ev === 'pointermove') {
+      if (!active.has(e.pointerId)) return;
+      if (!glide) return;
+      const m = midiFromPoint(e.clientX, e.clientY);
+      if (m != null && m !== active.get(e.pointerId)) press(e.pointerId, m, e.pressure);
+    } else {
+      release(e.pointerId);
+    }
+  }, { passive: false });
+});
+document.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ============ 音色切换 ============ */
+const toast = document.getElementById('toast');
+function showToast(t) {
+  toast.textContent = t; toast.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => toast.classList.remove('show'), 1400);
+}
+async function switchTimbre(name) {
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.k === name));
+  document.getElementById('maskTxt').textContent = `正在加载「${manifest[name].label}」…`;
+  document.getElementById('mask').classList.remove('hide');
+  initAudio();
+  try {
+    await loadTimbre(name);
+    current = name;
+    document.getElementById('sub').textContent = manifest[name].label;
+  } catch (e) {
+    showToast('音色加载失败：' + e.message);
+  }
+  document.getElementById('mask').classList.add('hide');
+}
+
+/* ============ 启动 ============ */
+(async function boot() {
+  try {
+    manifest = await (await fetch(MANIFEST_URL)).json();
+  } catch (e) {
+    document.getElementById('maskTxt').innerHTML =
+      'manifest.json 加载失败<br><small>请通过 HTTP 服务访问（勿用 file://）</small>';
+    document.getElementById('mask').querySelector('.spin').style.display = 'none';
+    return;
+  }
+  const box = document.getElementById('timbres');
+  Object.entries(manifest).forEach(([k, v]) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (v.sfx ? ' sfx' : '');
+    b.dataset.k = k; b.textContent = v.label;
+    b.onclick = () => switchTimbre(k);
+    box.appendChild(b);
+  });
+  buildKeyboard();
+
+  document.getElementById('btnLabel').onclick = e => {
+    showLabel = !showLabel;
+    e.target.classList.toggle('on', showLabel);
+    e.target.textContent = '音名 ' + (showLabel ? '开' : '关');
+    applyLabel();
+  };
+  document.getElementById('btnSustain').onclick = e => {
+    sustain = !sustain;
+    e.target.classList.toggle('on', sustain);
+    e.target.textContent = '延音 ' + (sustain ? '开' : '关');
+  };
+  document.getElementById('btnGlide').onclick = e => {
+    glide = !glide;
+    e.target.classList.toggle('on', glide);
+    e.target.textContent = '滑音 ' + (glide ? '开' : '关');
+  };
+  document.getElementById('octDown').onclick = () => {
+    if (baseMidi - 12 >= LOW) { baseMidi -= 12; buildKeyboard(); }
+  };
+  document.getElementById('octUp').onclick = () => {
+    if (baseMidi + 12 + SPAN <= 109) { baseMidi += 12; buildKeyboard(); }
+  };
+
+  await switchTimbre(Object.keys(manifest)[0]);
+  // 预热：静默播放一次解锁 iOS 音频
+  try {
+    const b = ctx.createBufferSource();
+    b.buffer = ctx.createBuffer(1, 1, 22050); b.connect(ctx.destination); b.start();
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
