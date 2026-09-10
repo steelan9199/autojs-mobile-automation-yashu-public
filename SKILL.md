@@ -18,6 +18,11 @@ PC 端 AI 是"大脑"，手机端 AutoJS 是"双手"：用户一句话描述任�
 5. **AI 读图能力按实测判断，勿武断**：先 `Read` 实测一次，能识别就据此决策，被过滤则改用 `ocr` / `inspect_control_*` / 问用户，不硬猜。
 6. **UI 模式指令必须在脚本首行（重大坑）**：AutoJs6 只认**文件第一行**的 UI 模式指令来启用 UI 模式；引号写法**单引号 `'ui';` 与双引号 `"ui";` 均可**（2026-09-08 实测两种都支持）。中继下发必注入引导代码，老客户端会把它挤到第二行 → UI 模式静默失效（`activity` 未定义 / `ui.layout` 崩溃，整个脚本报废）。客户端已根治（2026-09-06：检测到 `ui` 指令开头自动提行），但**双保险仍在**：网页容器类需求一律用 `open-webview` 模板（启动器落盘 + `execScriptFile`，不依赖客户端版本）；自己写 UI 一次性脚本也用同样模式。**写 UI 脚本时指令必须是文件第 1 个字符，注释/说明一律放它后面**（顶部注释挡在前也会失效，详见 `references/AI_AutoJS编码强制规范.md` §2.0）。
 7. **现场脚本全程 try-catch，错误必回传电脑**：任何经中继下发的脚本，主体逻辑必须包 try-catch，catch 里给 `result` 赋 `{ok:0, err}` 并靠 `events.on("exit")` 里 `autojs_result` 广播回执——**吞掉异常不回传 = PC 端只能干等超时**，是最难排查的静默失败。
+8. **⛔ 永不把「客户端引擎」当停止目标**：手机端执行端本体（路线A = APK 打包入口 `main.js` / 路线B = `autojs-task-phone-client.js`）一停 = 手机与电脑**断开连接、悬浮球变红**，且 PC 侧无法远程唤醒，**必须用户手动在手机上重开 App**，历史事故高发点。据此：
+   - 任务失败后要"清场"，**首选 `node scripts/run-task.js --stop <taskId>`** 按任务单精确强杀（客户端只停登记在册的那条引擎，不会退化为"停全部"）；
+   - **禁止 `list-running-scripts` → 全量 stop 的野蛮清场**；只停**明确列出的业务脚本 id**；
+   - `list-running-scripts` 回执里 `isClient:true` / `clientIds` 的条目**不是可停目标**，选 id 时必须跳过；
+   - `stop-script-by-id` 已默认拒停客户端（返回 `ok:0` + `blockedClient`）——**看到这个拒绝不要绕过**，不许改传 `forceStopClient:true` 去强停。
 
 ## 执行 SOP
 
@@ -55,7 +60,7 @@ PC 端 AI 是"大脑"，手机端 AutoJS 是"双手"：用户一句话描述任�
 | 中继没响应 / 手机超时连不上 / 保证中继活着       | `references/中继存活SOP.md`                          |
 | 客户端改不动 / 假死 / 自更新                     | `references/自动更新手机客户端.md`                   |
 | 多文件工程部署（含资源）                         | `references/部署真实工程.md`                         |
-| 判断"某引擎是不是自己" / 自保护                  | `references/引擎_self_识别与isSelf判定.md`           |
+| 判断"某引擎是不是自己 / 是不是客户端" / 自保护 | `references/引擎_self_识别与isSelf判定.md` |
 | 悬浮球行为 / 客户端职责                          | `references/手机端常驻客户端说明.md`                 |
 | 手机端 API 用法（设备/控件/图片/OCR/http/文件）  | `references/` 下六篇 `autojs6_*` 与 `AutoJs6_*` 文档 |
 | 查有多少模板（纯查询，不下发任务）               | `node scripts/scan-tasks.js --human`                 |
@@ -71,6 +76,7 @@ PC 端 AI 是"大脑"，手机端 AutoJS 是"双手"：用户一句话描述任�
 
 ## 高频误判点
 
+- **把客户端当普通脚本停掉（最高频事故）**：失败清场时 `list-running-scripts` 会把执行端本体一并列出，它**看着就是个普通脚本**。识别：回执里 `isClient:true` / 在 `clientIds` 里 / `source` 是相对路径 `main.js` 且 `cwd` 在 `/data/user/0/<包名>/files/project`（路线A），或 `source` 为 `autojs-task-phone-client.js`（路线B）。**它不是可停目标**；`stop-script-by-id` 会拒停并回 `ok:0 + blockedClient`，此拒绝是护栏不是 bug。
 - **熄屏/锁屏**：截全黑帧 + 剪贴板读空 + OCR 异常，而 `open-app` 却"假成功"（`am start` 不需亮屏）→ 让用户点亮解锁后重试，别往脚本 bug 方向排查。
 - **setInterval 保活分场景**：为"等任务回执"而保活不要做——经 `/run` 下发的脚本由中继托管，正常 exit 即回执；但**悬浮窗/常驻 UI 类脚本必须 `setInterval(空函数, 3000)` 保活**，否则脚本引擎随主线程结束而退出，悬浮窗瞬间被销毁（用户约定的标准做法）。
 - **UI 常驻任务关残留窗口，`--stop` 无效**：建好即回执后任务单已终态，`--stop` 返回 `alreadyFinished` 而引擎仍常驻、窗口还在 → 正确链路：`list-running-scripts` 拿实时引擎 id → `stop-script-by-id` 停掉（见 `references/引擎_self_识别与isSelf判定.md` §8）。

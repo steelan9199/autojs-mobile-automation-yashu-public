@@ -3,16 +3,23 @@
  * （由 stop-script-by-name 重命名而来：名字不是唯一标识，无法区分重名实例，故改为按 id 精确操作）
  *
  * 输入（任务单注入 __TASK_ARGS_PATH，按单文件 scripts-from-computer/data/task-args/<taskId>.json）:
- *   ids         {array|number} 必填 要停止的引擎 id。传数组 [11,12] 或单个数字 11 均可。
- *                              id 从 list-running-scripts 回执的 id 字段取得。
- *   includeSelf {boolean}      选填 是否允许连「当前正在执行的这一份引擎」也一起停，默认 false（永远保护自身）。
- *   waitMs      {number}       选填 停止后、回执前等待的毫秒数，默认 800。
+ *   ids             {array|number} 必填 要停止的引擎 id。传数组 [11,12] 或单个数字 11 均可。
+ *                                   id 从 list-running-scripts 回执的 id 字段取得。
+ *   includeSelf     {boolean}      选填 是否允许连「当前正在执行的这一份引擎」也一起停，默认 false（永远保护自身）。
+ *   forceStopClient {boolean}      选填 是否允许停「客户端引擎」（执行端本体），默认 false（拒绝）。
+ *                                   客户端 = 路线A 的 APK 打包入口 / 路线B 的客户端源码脚本；
+ *                                   停掉它 = 手机与电脑断开连接且必须人工重启，故默认一律拒绝。
+ *   waitMs          {number}       选填 停止后、回执前等待的毫秒数，默认 800。
  *                              给旧实例释放截图权限 / WebSocket 等资源留一点时间。
  * 输出:
  *   成功 {ok:1, found:N, stopped:M, missedIds:[...], detail:{stopped:[{id,source}], skipped:[{id,source,reason}]}}
  *        found=匹配到的实例数，stopped=实际成功 forceStop 的数量
  *        missedIds=传入但未匹配上任何运行中引擎的 id
+ *        clientProtected=N 时表示有 N 个客户端引擎被防护跳过（见 detail.skipped reason:"client"）
  *   失败 {ok:0, err:"原因"}
+ *        【客户端专用拒绝】目标里只有客户端引擎时回 ok:0 并给 blockedClient，
+ *        err 明确说明"这是执行端本体、已跳过、如需强停请传 forceStopClient:true"。
+ *        绝不静默当成功——避免调用方误以为客户端已停或业务脚本已清干净。
  *
  * 为什么按 id 而不是按名字（2026-09-04 真机实测结论）:
  *   实测抓到 id=11 与 id=12 两个引擎，source、cwd 完全相同（同一工程被重复启动）。
@@ -24,6 +31,11 @@
  *   2. myEngine 的 id 取不到时，自保护将失效（无法判断哪个是自己）→ 此时**整体放弃停止**并报错，
  *      绝不冒险遍历强停（宁可不停，绝不自杀）。
  *   3. 一个 id 都没匹配上 → 回 {ok:0, err}，明确告知失败，避免调用方误以为已停止。
+ *   4. **客户端保护（2026-09-10 新增）**：执行端本体（路线A APK 打包入口 / 路线B 客户端源码脚本）
+ *      默认一律跳过不停。它一停 = 手机与电脑断开连接、悬浮球变红、之后必须人工在手机上重启 App，
+ *      而 PC 侧无法远程唤醒 → 属"任务失败后清场"最常踩的重大事故。
+ *      判定只用 (source, cwd) 的结构特征（见 clientRule），不依赖包名，两条路线通吃。
+ *      确需强停必须显式传 forceStopClient:true（自杀式运维操作，非必要勿用）。
  *
  * 语法: ES5（var only）。单文件自包含。
  */
@@ -58,6 +70,47 @@ function safeSource(eng) {
     var s2 = eng.getSource();
     if (s2 !== null && s2 !== undefined) return String(s2);
   } catch (e2) {}
+  return null;
+}
+
+// 工作目录：官方 cwd()；实测恒返回字符串（工程=工程目录，单脚本=客户端目录）
+function safeCwd(eng) {
+  try {
+    var c = eng.cwd();
+    if (c === null || c === undefined) return null;
+    return String(c);
+  } catch (e) {
+    return null;
+  }
+}
+
+// ---- 客户端引擎识别（防误杀核心，2026-09-10 新增）----
+// 输入引擎的 (source, cwd)，返回命中的规则名或 null（非客户端）。
+// 只认结构特征、不认包名，故路线A/路线B 通吃，用户改包名/自建 APK 也不会漏保护：
+//   规则 client-script-name ：source 文件名 = autojs-task-phone-client.js（路线B，AutoJs6 直接跑客户端源码）
+//   规则 client-dir         ：source 路径含 /scripts-from-computer/client/（路线B 部署目录）
+//   规则 app-embedded-entry ：source 为相对路径（不含分隔符）+ cwd 位于 App 私有工程目录 .../files/project
+//                             （路线A，AutoJs6 打包 APK 的入口脚本，实测 source="main.js" 的形态）
+// 保守原则：判不准就当非客户端（宁可漏保护个别自建 App，也绝不把老板自己的业务脚本误判成客户端而拒绝停）。
+function clientRule(source, cwd) {
+  var s = (source === null || source === undefined) ? "" : String(source);
+  var c = (cwd === null || cwd === undefined) ? "" : String(cwd);
+  if (s === "") return null;
+
+  // 规则B-1：客户端源码文件名（取 basename，兼容 / 与 \ 两种分隔符）
+  var base = s;
+  var slash = s.lastIndexOf("/");
+  if (slash < 0) slash = s.lastIndexOf("\\");
+  if (slash >= 0) base = s.substring(slash + 1);
+  if (base === "autojs-task-phone-client.js") return "client-script-name";
+
+  // 规则B-2：客户端部署目录
+  if (s.indexOf("/scripts-from-computer/client/") >= 0) return "client-dir";
+
+  // 规则A：App 打包工程入口——相对 source + 私有工程目录 cwd
+  if (s.indexOf("/") === -1 && s.indexOf("\\") === -1) {
+    if (c.indexOf("/data/") === 0 && c.indexOf("/files/project") >= 0) return "app-embedded-entry";
+  }
   return null;
 }
 
@@ -98,6 +151,7 @@ try {
     } else {
       var waitMs = (typeof args.waitMs === "number" && args.waitMs >= 0) ? args.waitMs : 800;
       var includeSelf = args.includeSelf === true; // 默认 false：保护自身
+      var forceStopClient = args.forceStopClient === true; // 默认 false：保护客户端（执行端本体）
 
       var myEngine = engines.myEngine();
       var myId = safeId(myEngine);
@@ -119,11 +173,12 @@ try {
             err: "当前没有任何运行中的引擎，未匹配到 id=" + JSON.stringify(idList)
           };
         } else {
-          var found = 0;        // 匹配到的实例数（含被自保护跳过的）
+          var found = 0;        // 匹配到的实例数（含被自保护/客户端保护跳过的）
           var stopped = 0;      // 实际强停成功的数量
           var stopErrors = [];
           var detailStopped = [];
           var detailSkipped = [];
+          var blockedClient = []; // 被客户端保护拦下的实例（本模板最关键的护栏产物）
 
           for (var i = 0; i < all.length; i++) {
             var eng = all[i];
@@ -137,6 +192,15 @@ try {
             // 安全护栏 1：自保护（id 单要素，实测同进程内 id 唯一）
             if (!includeSelf && normId(engId) === normId(myId)) {
               detailSkipped.push({ id: engId, source: safeSource(eng), reason: "self" });
+              continue;
+            }
+
+            // 安全护栏 4：客户端保护（执行端本体，默认拒停；见文件头 §4 与 clientRule）
+            var engSource = safeSource(eng);
+            var cr = clientRule(engSource, safeCwd(eng));
+            if (cr !== null && !forceStopClient) {
+              blockedClient.push({ id: engId, source: engSource, rule: cr });
+              detailSkipped.push({ id: engId, source: engSource, reason: "client", rule: cr });
               continue;
             }
 
@@ -171,6 +235,18 @@ try {
               ok: 0,
               err: "未匹配到任何运行中的引擎 id=" + JSON.stringify(idList) + "（可能已自行退出，或 id 在 APP 重启后已失效）"
             };
+          } else if (stopped === 0 && blockedClient.length > 0) {
+            // 安全护栏 5：目标里只有客户端引擎 → 明确拒绝，绝不静默当成功
+            result = {
+              ok: 0,
+              err:
+                "目标 id 全部命中「客户端引擎」(执行端本体)，已按防护跳过、未停任何脚本。" +
+                "客户端一停 = 手机与电脑断开连接、悬浮球变红，且必须人工在手机上重启 App 才能恢复。" +
+                "请只停业务脚本（用 run-task.js --stop <taskId> 精确强杀），" +
+                "确需强停客户端请显式传 forceStopClient:true",
+              blockedClient: blockedClient
+            };
+            if (detailSkipped.length > blockedClient.length) result.detail = { stopped: detailStopped, skipped: detailSkipped };
           } else {
             result = {
               ok: 1,
@@ -179,8 +255,18 @@ try {
               detail: { stopped: detailStopped, skipped: detailSkipped }
             };
             if (missedIds.length > 0) result.missedIds = missedIds;
+            if (blockedClient.length > 0) {
+              // 业务脚本照停，客户端被护住：明确告知，别让调用方以为"全停干净了"
+              result.clientProtected = blockedClient.length;
+              result.blockedClient = blockedClient;
+            }
             if (stopped < found) {
-              result.warn = "有实例未能停止（含被自保护跳过或 forceStop 报错），详见 detail";
+              if (blockedClient.length > 0) {
+                result.warn =
+                  "有 " + blockedClient.length + " 个「客户端引擎」被防护跳过（未停，属正常保护），其余未停项详见 detail";
+              } else {
+                result.warn = "有实例未能停止（含被自保护跳过或 forceStop 报错），详见 detail";
+              }
               if (stopErrors.length > 0) result.detailErrors = stopErrors.join("; ");
             }
           }

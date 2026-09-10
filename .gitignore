@@ -8,7 +8,7 @@ scripts/task-results/
 scripts/uploads/
 *.log
 scripts/task_records.jsonl
+.vscode/settings.json
 # 授权文件与试用计数（运行时生成，不进版本库）
 license-key.txt
 .cache_*
-.vscode/settings.json

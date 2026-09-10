@@ -1,8 +1,9 @@
 ---
 title: 引擎 self 识别与 isSelf 判定
-summary: 判断"某个运行中的引擎是不是当前正在执行代码的自己"的正确方法 + 引擎 id/source/cwd 三字段真机实测取证
+summary: 判断"某个运行中的引擎是不是当前正在执行代码的自己"的正确方法 + 引擎 id/source/cwd 三字段真机实测取证 + "客户端引擎"识别规则（防误停执行端本体）
 read_when:
   - 写/改任意需要"标出自己"或"保护自身不被停止"的手机模板(list-running-scripts / stop-script-by-id 等)
+  - 判断某个引擎是不是「客户端引擎」（执行端本体，路线A APK 入口 / 路线B 客户端源码），或要写防误停护栏
   - 遇到 isSelf / 自保护 / 跳过自身 / eng === myEngine 相关逻辑
   - 需要读取运行中引擎的 id / source / cwd 原始字段时
 ---
@@ -113,14 +114,51 @@ function safeId(eng) {
 
 ## 7. 技能内已采用
 - `scripts/autojs-task-phone-client.js`：自身巡检即 `if (eng.id === myEngine.id)` 跳过自己（id 单要素，已验证可用）。
-- `scripts/tasks/list-running-scripts/list-running-scripts.js`：回执只回原始三件套
-  `{id, source, cwd, isSelf}` + `{count, total}`，`isSelf` 用 id 单要素（见文件头注释与 `safeId`）。
+- `scripts/tasks/list-running-scripts/list-running-scripts.js`：回执为
+  `{id, source, cwd, isSelf, isClient, clientRule}` + `{count, total, clientIds}`，
+  `isSelf` 用 id 单要素、`isClient` 用 `clientRule`（见 §9）。
 - `scripts/tasks/stop-script-by-id/stop-script-by-id.js`：按 id 精确停止；自保护用 id 单要素；
-  `myId` 取不到时整体放弃停止（见文件头"安全护栏"三节）。
+  `myId` 取不到时整体放弃停止；**默认拒停客户端引擎**（`clientRule` 命中即跳过，只有 `forceStopClient:true` 才放行）。
   **该模板由 `stop-script-by-name` 重命名而来**——名字无法区分重名实例，已废弃按名匹配。
 
 ## 8. 配套链路
 ```
-list-running-scripts  →  拿到实时 id  →  stop-script-by-id --args '{"ids":[11]}'
+list-running-scripts  →  拿到实时 id（跳过 isClient）  →  stop-script-by-id --args '{"ids":[11]}'
+任务失败后清场 → node scripts/run-task.js --stop <taskId>    ← 首选，天然不碰客户端
 ```
 `id` 必须来自当次实时回执，不要用记忆里的旧 id（APP 重启后 id 会归零重发）。
+
+## 9. 「客户端引擎」识别规则（防误停执行端本体，2026-09-10 新增）
+
+### 9.1 为什么需要
+执行端本体（客户端）**和普通业务脚本长得一模一样**地出现在 `engines.all()` 里。任务失败后 AI 若
+`list-running-scripts` → 全量 `stop`，就会把客户端一起杀掉：手机与电脑**断开连接、悬浮球变红**，
+且 PC 侧**无法远程唤醒**，必须用户手动在手机上重开 App。这是实际发生过的最高频事故。
+
+### 9.2 判定规则（只用 source/cwd 结构特征，不认包名）
+| `clientRule` | 判定条件 | 对应路线 |
+|---|---|---|
+| `client-script-name` | `source` 的 basename = `autojs-task-phone-client.js` | B（AutoJs6 里跑客户端源码） |
+| `client-dir` | `source` 含 `/scripts-from-computer/client/` | B（客户端部署目录） |
+| `app-embedded-entry` | `source` 为**相对路径**（不含 `/` 或 `\`）**且** `cwd` 以 `/data/` 开头并含 `/files/project` | A（APK 打包工程入口） |
+
+**为什么 `app-embedded-entry` 必须"相对 source + 私有 cwd"两个条件同时成立**——真机实测反例：
+客户端与它下发的所有子任务引擎，`cwd` **完全相同**（都是 `/data/user/0/com.taskrunner.client/files/project`）：
+
+| 引擎 | source | cwd | 结论 |
+|---|---|---|---|
+| 客户端 | `main.js`（相对！） | `.../com.taskrunner.client/files/project` | **依据相对 source 才能认出** |
+| 子任务脚本 | `/storage/emulated/0/脚本/scripts-from-computer/single/xxx.js` | 同上 | 只看 cwd 会误判 |
+
+即：**光看 cwd 会把所有业务脚本误判成客户端**（进而全被拒停，护栏变哑巴）；光看"文件名 `main.js`"
+又会把工程目录下的正常 `main.js`（如 `/sdcard/脚本/.../project/probe-proj/main.js`）误判成客户端
+——所以必须**两个条件同时满足**：只有"打包进 App 私有目录、以相对路径启动的工程入口"才是路线A 的客户端。
+
+### 9.3 保守原则
+判不准一律当**非客户端**。漏判（个别用户自建 APK 未被护住）可接受；**误判（把用户的业务脚本当客户端而拒绝停）不可接受**。
+新增/修改规则时先想清楚"会不会误判正常的业务脚本"。
+
+### 9.4 两条独立护栏别混淆
+- `isSelf`：**"这引擎是不是正在执行本任务的我"** → 决定要不要停"自己"（自杀保护）。
+- `isClient`：**"这引擎是不是执行端本体"** → 决定能不能停"客户端"（断连保护）。
+二者互不包含：真机实测客户端那条 `isSelf:false` 但 `isClient:true`——**它不是"我"，但同样不能停**。
