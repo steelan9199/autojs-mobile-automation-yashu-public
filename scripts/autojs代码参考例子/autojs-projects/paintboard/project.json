@@ -1,0 +1,8 @@
+{
+  "name": "paintboard",
+  "main": "main.js",
+  "packageName": "org.autojs.paintboard",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "ignore": ["/node_modules/"]
+}

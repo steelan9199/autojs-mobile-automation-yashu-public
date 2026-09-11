@@ -1,0 +1,13 @@
+{
+  "name": "pelican-ride",
+  "main": "main.js",
+  "packageName": "org.example.pelican_ride",
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "ignore": ["node_modules", ".git"],
+  "launchConfig": {
+    "displaySplash": false,
+    "hideLogs": true,
+    "stableMode": false
+  }
+}

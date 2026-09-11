@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="aDwdwrECuzCsmvo7X6QAeC">
+<head data-page-node-id="tnPOIHqpxr2MNNfebDRjce">
+<meta charset="utf-8" data-page-node-id="ar5VC8fRKHCKyvY3TrYpvn">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" data-page-node-id="c1iJoVVFEPcWDwn9d3821j">
+<meta name="theme-color" content="#06090d" data-page-node-id="jAKcc68pGZmRCPDJdfS9ap">
+<title>鹈鹕骑自行车 · 黄昏公路</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;background:#06090d;overflow:hidden;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;overscroll-behavior:none;}
+  #cv{display:block;width:100%;height:100%;}
+  /* 暗角（电影感） */
+  .vig{position:fixed;left:0;top:0;right:0;bottom:0;pointer-events:none;
+    background:
+      radial-gradient(128% 96% at 56% 52%, rgba(0,0,0,0) 34%, rgba(4,7,12,.26) 68%, rgba(3,5,10,.66) 100%),
+      linear-gradient(to bottom, rgba(6,10,16,.30) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 74%, rgba(6,9,14,.42) 100%);}
+  /* 胶片颗粒（steps 抖动，制造 24fps 的电影颗粒） */
+  .grain{position:fixed;left:-70px;top:-70px;right:-70px;bottom:-70px;pointer-events:none;
+    opacity:.055;background-repeat:repeat;mix-blend-mode:overlay;
+    animation:gr .78s steps(1,end) infinite;}
+  @keyframes gr{
+    0%{transform:translate(0,0)}      14%{transform:translate(-13px,6px)}
+    28%{transform:translate(9px,-11px)} 42%{transform:translate(-7px,-8px)}
+    57%{transform:translate(11px,7px)}  71%{transform:translate(-9px,10px)}
+    85%{transform:translate(6px,-6px)}  100%{transform:translate(0,0)}}
+</style>
+</head>
+<body data-page-node-id="x5mveBtAzBvNyz38GzmKaK">
+<canvas id="cv" data-page-node-id="fQ6uqXj42Yk1Ttn0HYFbr7"></canvas>
+<div class="vig" data-page-node-id="7mzSD1KpNomC0SCfzSVuFh"></div>
+<div class="grain" id="grain" data-page-node-id="qDgrtIU1CbLSI48StFPy2H"></div>
+<script>
+(function () {
+'use strict';
+
+var TAU = Math.PI * 2;
+var cv  = document.getElementById('cv');
+var ctx = cv.getContext('2d', { alpha: false });
+
+/* ══════════════════════════ 小工具 ══════════════════════════ */
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function mix(c1, c2, t) { return [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)]; }
+function rgb(c) { return 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')'; }
+function rgba(c, a) { return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + a + ')'; }
+/* 确定性伪随机（同 seed 恒等，避免每帧抖动） */
+function rnd(seed) { var x = Math.sin(seed * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+
+/* ══════════════════════════ 电影调色板：暖橙高光 × 青蓝阴影 ══════════════════════════ */
+var C = {
+  skyTop:   [  8,  24,  42],   // 高空：深青蓝
+  skyMid:   [ 28,  62,  84],   // 中空：青
+  skyLow:   [148, 108,  92],   // 近地平：灰橙
+  skyWarm:  [216, 132,  70],   // 暖橙
+  skyHot:   [255, 190, 116],   // 地平线火烧云
+  sunCore:  [255, 250, 228],
+  haze:     [244, 172,  96],   // 空气透视雾
+  farA:     [ 72, 104, 118],   // 远山（去饱和蓝灰）
+  farB:     [ 52,  80,  96],   // 次远山
+  groundHi: [108,  86,  62],
+  groundLo: [ 18,  27,  36],
+  roadHi:   [ 92,  72,  54],
+  roadLo:   [ 16,  24,  34],
+  ink:      [ 10,  11,  15],   // 主体剪影（近黑、偏青）
+  ink2:     [ 22,  25,  31],   // 车架
+  rim:      [255, 198, 116],   // 金色边缘光
+  rimHot:   [255, 242, 206],
+  pouch:    [255, 130,  52],   // 喉囊透光（暖橙）
+  scarf:    [ 34, 122, 132],   // 围巾：青（与暖橙互补）
+  eye:      [255, 238, 196]
+};
+
+/* ══════════════════════════ 骨架尺寸（rig 空间：地面 y=0，+y 向下，+x 前进方向） ══════════════════════════ */
+var WHEEL_R = 54, TIRE = 7, RIM_R = 45;
+var REAR  = { x: -80, y: -54 }, FRONT = { x: 80, y: -54 };
+var BB    = { x: -12, y: -46 };                 // 五通（曲柄中心）
+var CRANK = 27;                                 // 曲柄长度
+var SEAT_TOP = { x: -48, y: -156 };
+var SADDLE   = { x: -58, y: -164 };
+var HEAD_BOT = { x:  44, y: -132 };
+var HEAD_TOP = { x:  52, y: -160 };
+var GRIP     = { x:  94, y: -172 };
+var CHAIN_R  = 18, COG_R = 8;                   // 牙盘 / 飞轮半径 → 齿比 2.25
+var GEAR     = CHAIN_R / COG_R;                 // 车轮转 = 曲柄转 × GEAR
+
+var HIP     = { x: -52, y: -188 };              // 髋关节（腿的根）
+var TORSO_A = 0.30;                             // 躯干前倾
+var THIGH   = 86, SHIN = 92;                    // 两段腿长（IK）
+var RIG_W   = 352, RIG_H = 326;                 // 主体包围盒（用于取景缩放）
+
+/* 鹈鹕：躯干局部坐标（原点=髋，+x 前，+y 下） */
+var NECK_BASE_L = { x: 30, y: -86 };            // 颈根（躯干前上）
+var HEAD_W      = { x: 92,  y: -300 };          // 头心（世界坐标，前伸）
+var NECK_END_W  = { x: 70,  y: -300 };          // 颈接头的后缘
+
+/* ══════════════════════════ 布局 ══════════════════════════ */
+var W = 0, H = 0, DPR = 1, M = {};
+var skyGrad = null, groundGrad = null, roadGrad = null, roadGlowGrad = null;
+var mtnCv = null, cloudCv = null, sunCv = null;
+var RIM_G = null, RIM_K = 1, LIGHT = [0.42, -0.91];
+
+function layout() {
+  M.horizon = H * 0.505;                       // 地平线：略高于中线（低机位）
+  M.gy      = H * 0.815;                       // 车轮触地线
+  M.K       = M.gy - M.horizon;
+  M.vpX     = W * 0.665;                       // 灭点：路面消失于落日之下
+  M.rw1     = W * 0.44;                        // d=1 处路面半宽（透视系数）
+  M.S       = Math.min(W * 0.840 / RIG_W, H * 0.550 / RIG_H);
+  M.bx      = W * 0.428;                       // 主体横向位置
+  M.sunR    = Math.min(W, H) * 0.118;
+  M.sunX    = M.vpX;
+  M.sunY    = M.horizon - M.sunR * 2.50;       // 落日抬高：剪影落在天空上而非被吞掉
+
+  // 光照方向：主体中心 → 太阳（单位向量），用于边缘光方位
+  var sx = M.bx, sy = M.gy - 185 * M.S;
+  var dx = M.sunX - sx, dy = M.sunY - sy, dl = Math.sqrt(dx * dx + dy * dy) || 1;
+  LIGHT = [dx / dl, dy / dl];
+}
+
+/* 透视映射：深度 d（d≥1）→ 屏幕 y / 横向 u 的屏幕 x */
+function depth2y(d) { return M.horizon + M.K / d; }
+function depth2f(d) { return 1 / d; }
+function px(u, f)   { return M.vpX + u * M.rw1 * f; }
+function roadEdges(y) {
+  var f = (y - M.horizon) / M.K;
+  return { l: M.vpX - M.rw1 * f, r: M.vpX + M.rw1 * f, f: f };
+}
+
+/* ══════════════════════════ 静态图层烘焙（尺寸变化时重建） ══════════════════════════ */
+function buildStatic() {
+  /* 天空：深青蓝 → 青 → 暖橙 → 地平线火光 */
+  skyGrad = ctx.createLinearGradient(0, 0, 0, M.horizon * 1.02);
+  skyGrad.addColorStop(0.00, rgb(C.skyTop));
+  skyGrad.addColorStop(0.30, rgb(mix(C.skyTop, C.skyMid, 0.75)));
+  skyGrad.addColorStop(0.58, rgb(C.skyMid));
+  skyGrad.addColorStop(0.80, rgb(mix(C.skyMid, C.skyWarm, 0.62)));
+  skyGrad.addColorStop(0.93, rgb(C.skyWarm));
+  skyGrad.addColorStop(1.00, rgb(C.skyHot));
+
+  /* 地面：地平线暖雾 → 暗青黑 */
+  groundGrad = ctx.createLinearGradient(0, M.horizon, 0, H);
+  groundGrad.addColorStop(0.00, rgb(mix(C.groundHi, C.haze, 0.52)));
+  groundGrad.addColorStop(0.12, rgb(C.groundHi));
+  groundGrad.addColorStop(0.52, rgb(mix(C.groundHi, C.groundLo, 0.80)));
+  groundGrad.addColorStop(1.00, rgb(C.groundLo));
+
+  /* 路面 */
+  roadGrad = ctx.createLinearGradient(0, M.horizon, 0, H);
+  roadGrad.addColorStop(0.00, rgb(mix(C.roadHi, C.haze, 0.34)));
+  roadGrad.addColorStop(0.26, rgb(mix(C.roadHi, C.roadLo, 0.52)));
+  roadGrad.addColorStop(1.00, rgb(C.roadLo));
+
+  buildMountains();
+  buildClouds();
+  buildSun();
+  buildGrain();
+}
+
+/* 远景层：山脊（横向无缝平铺，强空气透视 → 去饱和 + 混暖雾） */
+function buildMountains() {
+  var TW = Math.max(720, Math.round(W * 1.7));
+  var TH = Math.max(96, Math.round(H * 0.17));
+  var c = document.createElement('canvas');
+  c.width = TW; c.height = TH;
+  var g = c.getContext('2d');
+
+  function ridge(amp, base, col, seed, kmax, yb) {
+    g.beginPath();
+    g.moveTo(0, TH);
+    for (var x = 0; x <= TW; x += 3) {
+      var h = base;
+      for (var k = 1; k <= kmax; k++) h += amp / k * Math.sin(TAU * k * x / TW + seed * k * 1.7);
+      g.lineTo(x, TH - h * (yb || 1));
+    }
+    g.lineTo(TW, TH); g.closePath();
+    g.fillStyle = rgb(col); g.fill();
+  }
+  /* 最近的山最实，最远的山几乎融进雾里 */
+  ridge(TH * 0.32, TH * 0.34, mix(C.farA, C.haze, 0.62), 0.7, 4, 0.86);
+  ridge(TH * 0.26, TH * 0.24, mix(C.farB, C.haze, 0.36), 3.1, 5, 1.00);
+  mtnCv = c;
+}
+
+/* 中景层：云带（底部被落日染暖，顶部仍青） */
+function buildClouds() {
+  var TW = Math.max(800, Math.round(W * 1.9));
+  var TH = Math.max(170, Math.round(H * 0.31));
+  var c = document.createElement('canvas');
+  c.width = TW; c.height = TH;
+  var g = c.getContext('2d');
+  for (var i = 0; i < 18; i++) {
+    var cx = rnd(i * 3.1) * TW;
+    var cy = 26 + rnd(i * 5.7) * (TH * 0.64);
+    var w  = 70 + rnd(i * 7.3) * 200;
+    var h  = 5 + rnd(i * 9.1) * 12;
+    var depth = 1 - cy / TH;                       // 越低压越暖
+    var top = mix(C.skyMid, C.haze, 0.28 + 0.48 * depth);
+    var bot = mix(top, C.haze, 0.60);
+    var gr = g.createLinearGradient(0, cy - h, 0, cy + h * 2.4);
+    gr.addColorStop(0, rgba(top, 0.52));
+    gr.addColorStop(1, rgba(bot, 0.00));
+    g.fillStyle = gr;
+    for (var j = 0; j < 5; j++) {
+      var ox = -w / 2 + (j / 4) * w;
+      g.beginPath();
+      g.ellipse(cx + ox, cy + Math.sin(j / 4 * Math.PI) * -h * 0.55,
+                w * 0.30, h * (0.55 + rnd(i + j * 2.3) * 0.95), 0, 0, TAU);
+      g.fill();
+    }
+    /* 底缘被落日打亮的暖边 */
+    g.beginPath();
+    g.ellipse(cx, cy + h * 0.40, w * 0.46, h * 0.28, 0, 0, TAU);
+    g.fillStyle = rgba(mix(C.haze, [255, 236, 198], 0.5), 0.20);
+    g.fill();
+  }
+  cloudCv = c;
+}
+
+/* 落日：核心 + 分层光晕，一次性烘焙 */
+function buildSun() {
+  var R = M.sunR, pad = R * 3.4;
+  var sz = Math.ceil(pad * 2);
+  var c = document.createElement('canvas');
+  c.width = sz; c.height = sz;
+  var g = c.getContext('2d');
+  var cx = pad, cy = pad;
+  var gr = g.createRadialGradient(cx, cy, R * 0.16, cx, cy, pad);
+  gr.addColorStop(0.00, rgba(C.sunCore, 0.96));
+  gr.addColorStop(0.15, rgba([255, 230, 170], 0.60));
+  gr.addColorStop(0.34, rgba([255, 178,  92], 0.28));
+  gr.addColorStop(0.62, rgba([238, 132,  62], 0.11));
+  gr.addColorStop(1.00, rgba([220, 108,  48], 0.00));
+  g.fillStyle = gr; g.fillRect(0, 0, sz, sz);
+  g.beginPath(); g.arc(cx, cy, R, 0, TAU);
+  g.fillStyle = rgba(C.sunCore, 0.94); g.fill();
+  g.beginPath(); g.arc(cx, cy, R * 0.70, 0, TAU);
+  g.fillStyle = rgba([255, 253, 238], 0.96); g.fill();
+  sunCv = c; M.sunPad = pad;
+}
+
+/* 胶片颗粒贴图 → 喂给 DOM 层 */
+function buildGrain() {
+  var n = 128, c = document.createElement('canvas');
+  c.width = n; c.height = n;
+  var g = c.getContext('2d');
+  var img = g.createImageData(n, n);
+  for (var i = 0; i < n * n; i++) {
+    var v = 96 + Math.random() * 160;
+    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  document.getElementById('grain').style.backgroundImage = 'url(' + c.toDataURL() + ')';
+}
+
+/* ══════════════════════════ 路径 / 上色 ══════════════════════════ */
+/* 胶囊形（两端圆头的粗线段） */
+function capsulePath(g, ax, ay, bx, by, wa, wb) {
+  var dx = bx - ax, dy = by - ay, L = Math.sqrt(dx * dx + dy * dy) || 1;
+  var ux = dx / L, uy = dy / L, nx = -uy, ny = ux, N = 7, i, a, ca, sa, vx, vy;
+  g.beginPath();
+  g.moveTo(ax + nx * wa / 2, ay + ny * wa / 2);
+  g.lineTo(bx + nx * wb / 2, by + ny * wb / 2);
+  for (i = 1; i <= N; i++) {
+    a = Math.PI * i / N; ca = Math.cos(a); sa = Math.sin(a);
+    vx = nx * ca + ux * sa; vy = ny * ca + uy * sa;
+    g.lineTo(bx + vx * wb / 2, by + vy * wb / 2);
+  }
+  g.lineTo(ax - nx * wa / 2, ay - ny * wa / 2);
+  for (i = 1; i <= N; i++) {
+    a = Math.PI * i / N; ca = Math.cos(a); sa = Math.sin(a);
+    vx = -nx * ca - ux * sa; vy = -ny * ca - uy * sa;
+    g.lineTo(ax + vx * wa / 2, ay + vy * wa / 2);
+  }
+  g.closePath();
+}
+
+/* 三次贝塞尔采样 → 点序列 */
+function bezPts(p0, c1, c2, p3, n) {
+  var out = [], i, t, mt, a, b, c2i, d;
+  for (i = 0; i <= n; i++) {
+    t = i / n; mt = 1 - t;
+    a = mt * mt * mt; b = 3 * mt * mt * t; c2i = 3 * mt * t * t; d = t * t * t;
+    out.push([
+      a * p0[0] + b * c1[0] + c2i * c2[0] + d * p3[0],
+      a * p0[1] + b * c1[1] + c2i * c2[1] + d * p3[1]
+    ]);
+  }
+  return out;
+}
+
+/* 变宽度管道（用于脖颈、翅膀根、围巾等有机形体） */
+function taperPath(g, pts, w0, w1) {
+  var n = pts.length, L = [], R = [], i, a, b, dx, dy, len, nx, ny, w;
+  for (i = 0; i < n; i++) {
+    a = pts[Math.max(0, i - 1)]; b = pts[Math.min(n - 1, i + 1)];
+    dx = b[0] - a[0]; dy = b[1] - a[1]; len = Math.sqrt(dx * dx + dy * dy) || 1;
+    nx = -dy / len; ny = dx / len;
+    w = (w0 + (w1 - w0) * (i / (n - 1))) / 2;
+    L.push([pts[i][0] + nx * w, pts[i][1] + ny * w]);
+    R.push([pts[i][0] - nx * w, pts[i][1] - ny * w]);
+  }
+  g.beginPath();
+  g.moveTo(L[0][0], L[0][1]);
+  for (i = 1; i < n; i++) g.lineTo(L[i][0], L[i][1]);
+  for (i = n - 1; i >= 0; i--) g.lineTo(R[i][0], R[i][1]);
+  g.closePath();
+}
+
+/* ══════════════════════════ 金色边缘光 ══════════════════════════
+   原理：裁切到形体内部 → 沿「背光方向」平移形体 → 再描边。
+   描边外半圈正好压在裁切边界上，只在朝光的那一侧留下一条金边。   */
+function rimEdge(pathFn, k, w) {
+  if (!RIM_G) return;
+  ctx.save();
+  pathFn(); ctx.clip();
+  ctx.translate(-LIGHT[0] * k, -LIGHT[1] * k);
+  ctx.strokeStyle = RIM_G;
+  ctx.lineWidth = k * 2 + w;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  pathFn();
+  ctx.stroke();
+  ctx.restore();
+}
+/* 暗部剪影 + 金色边缘光 */
+function sil(pathFn, fillCol, rimK) {
+  ctx.beginPath(); pathFn(); ctx.fillStyle = fillCol; ctx.fill();
+  if (rimK) rimEdge(pathFn, RIM_K * rimK, RIM_K * 1.05);
+}
+function bone(ax, ay, bx, by, wa, wb, fillCol, rimK) {
+  sil(function () { capsulePath(ctx, ax, ay, bx, by, wa, wb); }, fillCol, rimK);
+}
+function tube(ax, ay, bx, by, w, fillCol, rimK) {
+  sil(function () { capsulePath(ctx, ax, ay, bx, by, w, w); }, fillCol, rimK);
+}
+
+/* ══════════════════════════ 远景 ══════════════════════════ */
+function drawSky() { ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, W, M.horizon + 2); }
+
+function drawStars(t) {
+  var yMax = M.horizon * 0.60;
+  for (var i = 0; i < 44; i++) {
+    var x = rnd(i * 2.3) * W;
+    var y = rnd(i * 4.7) * yMax;
+    var tw = 0.5 + 0.5 * Math.sin(t * (1.1 + rnd(i * 6.1)) + i * 2.3);
+    var a = (1 - y / yMax) * 0.50 * tw + 0.05;
+    ctx.fillStyle = rgba([206, 222, 238], a);
+    ctx.beginPath(); ctx.arc(x, y, 0.6 + rnd(i * 8.9) * 1.2, 0, TAU); ctx.fill();
+  }
+}
+
+function drawSun() {
+  var p = M.sunPad;
+  ctx.drawImage(sunCv, M.sunX - p, M.sunY - p);
+}
+
+function drawClouds(t) {
+  var TW = cloudCv.width, off = -((t * 3.6) % TW);
+  var ty = M.horizon - cloudCv.height * 0.84;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, M.horizon + 1); ctx.clip();
+  ctx.globalAlpha = 0.96;
+  ctx.drawImage(cloudCv, off, ty);
+  ctx.drawImage(cloudCv, off + TW, ty);
+  ctx.restore();
+}
+
+function drawMountains(t) {
+  var TW = mtnCv.width, off = -((t * 1.3) % TW);
+  var ty = M.horizon - mtnCv.height + 1;
+  ctx.drawImage(mtnCv, off, ty);
+  ctx.drawImage(mtnCv, off + TW, ty);
+  /* 地平线暖雾：把远山"压"进空气里 */
+  var g = ctx.createLinearGradient(0, M.horizon - H * 0.05, 0, M.horizon + H * 0.014);
+  g.addColorStop(0, rgba(C.haze, 0));
+  g.addColorStop(1, rgba(C.haze, 0.46));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, M.horizon - H * 0.05, W, H * 0.064);
+}
+
+/* 远处的鸟群（中景） */
+function drawBirds(t) {
+  ctx.strokeStyle = 'rgba(28,34,42,0.42)';
+  ctx.lineWidth = Math.max(1, W * 0.0016);
+  for (var i = 0; i < 5; i++) {
+    var bx = (W * 0.06 + i * W * 0.20 + (t * (6 + i * 2)) % (W * 1.3)) % (W * 1.2);
+    var by = M.horizon - H * (0.06 + rnd(i * 4.4) * 0.08) + Math.sin(t * 0.7 + i) * 4;
+    var s = W * (0.010 + rnd(i * 8.8) * 0.008);
+    var fl = Math.sin(t * 5.2 + i * 2.1) * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(bx - s, by + s * 0.42 * (1 + fl));
+    ctx.quadraticCurveTo(bx - s * 0.35, by - s * 0.30, bx, by);
+    ctx.quadraticCurveTo(bx + s * 0.35, by - s * 0.30, bx + s, by + s * 0.42 * (1 + fl));
+    ctx.stroke();
+  }
+}
+
+/* ══════════════════════════ 中景：地面 / 路面 ══════════════════════════ */
+function drawGround() {
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, M.horizon, W, H - M.horizon);
+  /* 荒地掠影（与路面同一时基，节奏统一） */
+  var travel = T * V_DASH, SP = 0.95;
+  var k0 = Math.ceil((travel + 0.06) / SP), k1 = Math.floor((travel + 16) / SP);
+  for (var side = -1; side <= 1; side += 2) {
+    for (var k = k0; k <= k1; k++) {
+      var d = k * SP - travel;
+      if (d <= 0.05) continue;
+      var f = 1 / d, y = depth2y(d);
+      if (y > H + 40) continue;
+      var u = side * (1.42 + ((k * 37) % 11) * 0.24);
+      var x = px(u, f);
+      var hh = 15 * f, ww = 92 * f;
+      var a = clamp((1 - d / 16) * 0.9, 0, 1) * 0.28;
+      ctx.fillStyle = rgba(mix(C.groundLo, C.haze, 0.38 * clamp(1 - d / 9, 0, 1)), a);
+      ctx.beginPath();
+      ctx.ellipse(x, y, Math.max(1, ww), Math.max(0.6, hh * 0.34), 0, 0, TAU);
+      ctx.fill();
+    }
+  }
+}
+
+function drawRoad() {
+  var bot = roadEdges(H);
+  ctx.beginPath();
+  ctx.moveTo(M.vpX, M.horizon);
+  ctx.lineTo(bot.l, H); ctx.lineTo(bot.r, H);
+  ctx.closePath();
+  ctx.fillStyle = roadGrad; ctx.fill();
+
+  ctx.save();
+  ctx.clip();
+
+  /* 落日被路面拉长的反光带 */
+  roadGlowGrad = ctx.createLinearGradient(0, M.horizon, 0, H);
+  roadGlowGrad.addColorStop(0.00, rgba([255, 214, 152], 0.58));
+  roadGlowGrad.addColorStop(0.14, rgba([255, 176,  96], 0.28));
+  roadGlowGrad.addColorStop(0.46, rgba([238, 144,  72], 0.08));
+  roadGlowGrad.addColorStop(1.00, rgba([222, 124,  62], 0.00));
+  ctx.fillStyle = roadGlowGrad;
+  ctx.beginPath();
+  ctx.moveTo(M.vpX - M.rw1 * 0.09, M.horizon);
+  ctx.lineTo(M.vpX + M.rw1 * 0.09, M.horizon);
+  ctx.lineTo(M.vpX + M.rw1 * 1.34, H);
+  ctx.lineTo(M.vpX - M.rw1 * 1.34, H);
+  ctx.closePath(); ctx.fill();
+
+  /* 中线虚线：透视正确的四边形，随 travel 向观察者推进 */
+  var travel = T * V_DASH, SP = 1.5, LEND = 0.48;
+  var k0 = Math.ceil((travel + 0.06) / SP), k1 = Math.floor((travel + 24) / SP);
+  for (var k = k0; k <= k1; k++) {
+    var z = k * SP, d1 = z - travel, d2 = z + LEND - travel;
+    if (d2 <= 0.05) continue;
+    d1 = Math.max(d1, 0.055);
+    var y1 = depth2y(d1), y2 = depth2y(d2);
+    var e1 = roadEdges(y1), e2 = roadEdges(y2);
+    var h1 = M.rw1 * 0.036 * e1.f, h2 = M.rw1 * 0.036 * e2.f;
+    var a = clamp((1 - d2 / 24) * 1.5, 0, 1) * 0.55;
+    ctx.fillStyle = rgba(mix([218, 192, 158], C.haze, clamp(1 - d2 / 8, 0, 1) * 0.62), a);
+    ctx.beginPath();
+    ctx.moveTo(M.vpX - h1, y1); ctx.lineTo(M.vpX + h1, y1);
+    ctx.lineTo(M.vpX + h2, y2); ctx.lineTo(M.vpX - h2, y2);
+    ctx.closePath(); ctx.fill();
+  }
+
+  /* 两侧边线 */
+  for (var s = -1; s <= 1; s += 2) {
+    var a1 = roadEdges(M.horizon + 1), a2 = roadEdges(H);
+    var w1 = M.rw1 * 0.013 * a1.f, w2 = M.rw1 * 0.013 * a2.f;
+    var u = s * 0.90;
+    var lg = ctx.createLinearGradient(0, M.horizon, 0, H);
+    lg.addColorStop(0.00, rgba([255, 228, 184], 0.0));
+    lg.addColorStop(0.12, rgba([255, 220, 172], 0.34));
+    lg.addColorStop(1.00, rgba([214, 194, 168], 0.16));
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.moveTo(M.vpX + u * M.rw1 * a1.f - w1, M.horizon + 1);
+    ctx.lineTo(M.vpX + u * M.rw1 * a1.f + w1, M.horizon + 1);
+    ctx.lineTo(M.vpX + u * M.rw1 * a2.f + w2, H);
+    ctx.lineTo(M.vpX + u * M.rw1 * a2.f - w2, H);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* 电线杆 + 电线（中景，逆光剪影） */
+function drawPoles() {
+  var travel = T * V_DASH, SP = 2.7;
+  var k0 = Math.ceil((travel + 0.06) / SP), k1 = Math.floor((travel + 32) / SP);
+  var prev = null;
+  for (var k = k0; k <= k1; k++) {
+    var d = k * SP - travel;
+    if (d <= 0.05) continue;
+    var f = 1 / d, y = depth2y(d);
+    if (y > H + 220) continue;
+    var x = px(-1.72, f);
+    var hgt = M.rw1 * 1.95 * f;
+    var wdt = Math.max(0.8, hgt * 0.020);
+    var a = clamp((1 - d / 32) * 1.6, 0, 1);
+    var col = mix(C.ink, C.haze, clamp(1 - d / 10, 0, 1) * 0.46);
+    ctx.fillStyle = rgba(col, 0.34 + 0.30 * a);
+    ctx.beginPath();
+    ctx.moveTo(x - wdt, y); ctx.lineTo(x + wdt, y);
+    ctx.lineTo(x + wdt * 0.55, y - hgt); ctx.lineTo(x - wdt * 0.55, y - hgt);
+    ctx.closePath(); ctx.fill();
+    var ay = y - hgt * 0.88, aw = hgt * 0.21;
+    ctx.beginPath(); ctx.rect(x - aw, ay - wdt * 0.9, aw * 2, wdt * 1.8); ctx.fill();
+    if (prev) {
+      ctx.strokeStyle = rgba(col, 0.28 + 0.30 * Math.min(a, prev.a));
+      ctx.lineWidth = Math.max(0.5, hgt * 0.006);
+      ctx.beginPath();
+      ctx.moveTo(prev.x - prev.aw, prev.y);
+      ctx.quadraticCurveTo((prev.x + x) / 2 - aw, (prev.y + ay) / 2 + hgt * 0.10, x - aw, ay);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(prev.x + prev.aw, prev.y);
+      ctx.quadraticCurveTo((prev.x + x) / 2 + aw, (prev.y + ay) / 2 + hgt * 0.10, x + aw, ay);
+      ctx.stroke();
+    }
+    prev = { x: x, y: ay, a: a, aw: aw };
+  }
+}
+
+/* 路边树丛（中景） */
+function drawTrees() {
+  var travel = T * V_DASH, SP = 3.6;
+  var k0 = Math.ceil((travel + 0.06) / SP), k1 = Math.floor((travel + 28) / SP);
+  for (var k = k0; k <= k1; k++) {
+    var d = k * SP - travel;
+    if (d <= 0.05) continue;
+    var f = 1 / d, y = depth2y(d);
+    if (y > H + 130) continue;
+    var side = (k % 2 === 0) ? -1 : 1;
+    var u = side * (3.05 + ((k * 13) % 7) * 0.40);
+    var x = px(u, f);
+    var hgt = M.rw1 * (0.80 + ((k * 7) % 5) * 0.15) * f;
+    var a = clamp((1 - d / 28) * 1.6, 0, 1) * 0.9;
+    var col = mix(C.ink2, C.haze, clamp(1 - d / 9, 0, 1) * 0.42);
+    ctx.fillStyle = rgba(col, 0.40 + 0.44 * a);
+    ctx.beginPath();
+    ctx.moveTo(x - hgt * 0.30, y);
+    ctx.quadraticCurveTo(x - hgt * 0.22, y - hgt * 0.62, x, y - hgt);
+    ctx.quadraticCurveTo(x + hgt * 0.22, y - hgt * 0.62, x + hgt * 0.30, y);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+/* ══════════════════════════ 长投影 ══════════════════════════ */
+function drawShadow(bob) {
+  var S = M.S, x0 = M.bx, y0 = M.gy + 2 * S;
+  var len = S * 250, dirX = -0.70, dirY = 0.715;
+  var g = ctx.createLinearGradient(x0, y0, x0 + dirX * len, y0 + dirY * len);
+  g.addColorStop(0.00, 'rgba(10,14,18,0.46)');
+  g.addColorStop(0.48, 'rgba(12,16,20,0.17)');
+  g.addColorStop(1.00, 'rgba(14,18,22,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x0 - S * 66, y0 - S * 3);
+  ctx.lineTo(x0 + S * 66, y0 + S * 3);
+  var ex = x0 + dirX * len, ey = y0 + dirY * len;
+  var nx = -dirY, ny = dirX, we = S * 44;
+  ctx.lineTo(ex + nx * we, ey + ny * we);
+  ctx.lineTo(ex - nx * we, ey - ny * we);
+  ctx.closePath(); ctx.fill();
+  /* 轮下硬阴影（贴地，让车"压住"地面） */
+  ctx.fillStyle = 'rgba(9,13,17,0.48)';
+  ctx.beginPath(); ctx.ellipse(x0 - 80 * S, y0 - S, 30 * S, 6.5 * S, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x0 + 80 * S, y0 - S, 30 * S, 6.5 * S, 0, 0, TAU); ctx.fill();
+}
+
+/* ══════════════════════════ 尘土（由 travel 推导 → 绝对无漂移） ══════════════════════════ */
+var DUST_N = 56, DUST_R = [];
+for (var _di = 0; _di < DUST_N; _di++) DUST_R.push([rnd(_di * 1.7), rnd(_di * 3.3), rnd(_di * 5.9)]);
+function drawDust(fore) {
+  var S = M.S;
+  for (var i = 0; i < DUST_N; i++) {
+    var r0 = DUST_R[i][0], r1 = DUST_R[i][1], r2 = DUST_R[i][2];
+    var front = r2 >= 0.44;
+    if (front !== fore) continue;
+    var e = (T * 0.66 + i / DUST_N + r0 * 0.13) % 1;
+    var bx = M.bx + (-84 - e * (150 + r1 * 190)) * S;
+    var by = M.gy + (-3 - Math.pow(e, 0.72) * (48 + r1 * 96)) * S
+             + Math.sin(T * 5 + i) * 3 * S * e;
+    var rr = (2.1 + e * (14 + r1 * 20)) * S * 0.55;
+    var a = (1 - e) * (1 - e) * (0.30 + r1 * 0.30);
+    ctx.fillStyle = rgba(mix([238, 190, 138], [255, 228, 182], r0), a * 0.78);
+    ctx.beginPath(); ctx.arc(bx, by, rr, 0, TAU); ctx.fill();
+  }
+}
+
+/* ══════════════════════════ 主体：自行车 ══════════════════════════ */
+function drawWheel(cx, cy, rot) {
+  /* 外胎 */
+  sil(function () {
+    ctx.beginPath();
+    ctx.arc(cx, cy, WHEEL_R, 0, TAU);
+    ctx.arc(cx, cy, WHEEL_R - TIRE, 0, TAU, true);
+  }, rgb(mix(C.ink, C.ink2, 0.42)), 1.15);
+  /* 轮圈 */
+  sil(function () {
+    ctx.beginPath();
+    ctx.arc(cx, cy, RIM_R, 0, TAU);
+    ctx.arc(cx, cy, RIM_R - 4.4, 0, TAU, true);
+  }, rgb(mix(C.ink2, C.rim, 0.12)), 1.5);
+  /* 辐条（双份 + 低透明度 = 廉价运动模糊） */
+  ctx.save();
+  ctx.translate(cx, cy); ctx.rotate(rot);
+  ctx.strokeStyle = rgba(mix(C.rim, C.ink2, 0.34), 0.52);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (var i = 0; i < 14; i++) {
+    var a = TAU * i / 14;
+    ctx.moveTo(Math.cos(a) * 4, Math.sin(a) * 4);
+    ctx.lineTo(Math.cos(a) * (RIM_R - 4), Math.sin(a) * (RIM_R - 4));
+  }
+  ctx.stroke();
+  ctx.rotate(0.14);
+  ctx.globalAlpha = 0.34;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  /* 气门嘴：让"在转"这件事可读 */
+  ctx.strokeStyle = rgba(C.rimHot, 0.88);
+  ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(0, RIM_R - 3); ctx.stroke();
+  ctx.restore();
+  /* 花鼓 */
+  ctx.beginPath(); ctx.arc(cx, cy, 5, 0, TAU);
+  ctx.fillStyle = rgb(mix(C.ink2, C.rim, 0.26)); ctx.fill();
+  /* 轮廓金边（朝光的右上弧） */
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, WHEEL_R - 1.5, -2.25, -0.35); ctx.clip();
+  ctx.strokeStyle = rgba(C.rimHot, 0.55);
+  ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.arc(cx, cy, WHEEL_R - 1.5, 0, TAU); ctx.stroke();
+  ctx.restore();
+}
+
+/* 链条包络（两圆外公切线） */
+function drawChain() {
+  var c1 = BB, r1 = CHAIN_R, c2 = REAR, r2 = COG_R;
+  var dx = c2.x - c1.x, dy = c2.y - c1.y, L = Math.sqrt(dx * dx + dy * dy);
+  var gamma = Math.atan2(dy, dx), alpha = Math.acos(clamp((r1 - r2) / L, -1, 1));
+  var a1 = gamma + alpha, a2 = gamma - alpha;
+  var p1u = [c1.x + Math.cos(a1) * r1, c1.y + Math.sin(a1) * r1];
+  var p2u = [c2.x + Math.cos(a1) * r2, c2.y + Math.sin(a1) * r2];
+  var p1d = [c1.x + Math.cos(a2) * r1, c1.y + Math.sin(a2) * r1];
+  var p2d = [c2.x + Math.cos(a2) * r2, c2.y + Math.sin(a2) * r2];
+  sil(function () {
+    ctx.beginPath();
+    ctx.moveTo(p1u[0], p1u[1]); ctx.lineTo(p2u[0], p2u[1]);
+    ctx.arc(c2.x, c2.y, r2, a1, a2, false);
+    ctx.lineTo(p1d[0], p1d[1]);
+    ctx.arc(c1.x, c1.y, r1, a2, a1, false);
+    ctx.closePath();
+  }, rgb(mix(C.ink2, C.rim, 0.13)), 1.3);
+}
+
+function drawFrame() {
+  var col = rgb(C.ink2);
+  tube(BB.x, BB.y, SEAT_TOP.x, SEAT_TOP.y, 7.5, col, 0.7);            // 座管
+  tube(BB.x, BB.y, HEAD_BOT.x, HEAD_BOT.y, 8.5, col, 0.8);            // 下管
+  tube(SEAT_TOP.x, SEAT_TOP.y, HEAD_TOP.x, HEAD_TOP.y, 7, col, 0.8);  // 上管
+  tube(SEAT_TOP.x, SEAT_TOP.y, REAR.x, REAR.y, 5.5, col, 0.6);        // 后上叉
+  tube(BB.x, BB.y, REAR.x, REAR.y, 5.5, col, 0.6);                    // 后下叉
+  tube(HEAD_TOP.x, HEAD_TOP.y, HEAD_BOT.x, HEAD_BOT.y, 8, col, 0.8);  // 头管
+  tube(HEAD_BOT.x, HEAD_BOT.y, FRONT.x, FRONT.y, 6.5, col, 0.7);      // 前叉
+  /* 车把（弯把） */
+  sil(function () {
+    capsulePath(ctx, HEAD_TOP.x + 14, HEAD_TOP.y - 12, GRIP.x, GRIP.y, 6, 5);
+  }, col, 1.2);
+  /* 车座 */
+  sil(function () {
+    ctx.beginPath();
+    ctx.moveTo(SADDLE.x - 21, SADDLE.y + 2);
+    ctx.quadraticCurveTo(SADDLE.x - 2, SADDLE.y - 7, SADDLE.x + 20, SADDLE.y - 1);
+    ctx.quadraticCurveTo(SADDLE.x + 4, SADDLE.y + 7, SADDLE.x - 21, SADDLE.y + 2);
+    ctx.closePath();
+  }, col, 1.3);
+  /* 牙盘 */
+  sil(function () {
+    ctx.beginPath();
+    ctx.arc(BB.x, BB.y, CHAIN_R, 0, TAU);
+    ctx.arc(BB.x, BB.y, CHAIN_R - 4.2, 0, TAU, true);
+  }, rgb(mix(C.ink2, C.rim, 0.24)), 1.5);
+  ctx.save();
+  ctx.strokeStyle = rgba(mix(C.rim, C.ink2, 0.2), 0.46);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (var i = 0; i < 10; i++) {
+    var a = TAU * i / 10;
+    ctx.moveTo(BB.x + Math.cos(a) * 4, BB.y + Math.sin(a) * 4);
+    ctx.lineTo(BB.x + Math.cos(a) * (CHAIN_R - 2), BB.y + Math.sin(a) * (CHAIN_R - 2));
+  }
+  ctx.stroke();
+  ctx.restore();
+  /* 飞轮 */
+  sil(function () { ctx.beginPath(); ctx.arc(REAR.x, REAR.y, COG_R, 0, TAU); },
+      rgb(mix(C.ink2, C.rim, 0.20)), 1.4);
+}
+
+/* ══════════════════════════ 两段 IK（膝/踝） ══════════════════════════
+   给定髋 H 与目标 T，求出膝关节 K；l1=大腿、l2=小腿。
+   s=+1 时膝关节朝前上方弯曲（骑车姿态）。                          */
+function ik2(hx, hy, tx, ty, l1, l2, s) {
+  var dx = tx - hx, dy = ty - hy, d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+  var maxD = (l1 + l2) * 0.9995, minD = Math.abs(l1 - l2) + 0.02;
+  d = clamp(d, minD, maxD);
+  var a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+  var hh = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  var ux = dx / d, uy = dy / d;
+  return { x: hx + a * ux + s * hh * uy, y: hy + a * uy - s * hh * ux };
+}
+/* 踏板位置：严格由曲柄相位决定 */
+function pedalPt(ang) {
+  return { x: BB.x + Math.cos(ang) * CRANK, y: BB.y + Math.sin(ang) * CRANK };
+}
+
+/* 单条腿：踝点由踏板推出（踝在踏板轴心上方一点），IK 解膝 → 脚永远踩在踏板上 */
+function drawLeg(ang, far) {
+  var hipX = HIP.x + (far ? -6 : 0), hipY = HIP.y + (far ? -3 : 0);
+  var p = pedalPt(ang);
+  var ankle = { x: p.x + 1, y: p.y - 11 };
+  var k = ik2(hipX, hipY, ankle.x, ankle.y, THIGH, SHIN, 1);
+
+  var fill = rgb(far ? mix(C.ink, C.ink2, 0.75) : C.ink);
+  var rim  = far ? 0.34 : 1;
+
+  /* 大腿（根部粗、有羽毛感） */
+  bone(hipX, hipY, k.x, k.y, far ? 34 : 38, far ? 17 : 20, fill, rim * 1.05);
+  /* 小腿（细长） */
+  bone(k.x, k.y, ankle.x, ankle.y, far ? 13 : 15, far ? 8 : 9.5, fill, rim);
+  /* 蹼足：贴在踏板上，趾向前 */
+  sil(function () {
+    ctx.beginPath();
+    ctx.moveTo(ankle.x - 5, ankle.y + 1);
+    ctx.lineTo(ankle.x - 2, ankle.y + 9);
+    ctx.lineTo(ankle.x + 22, ankle.y + 10);
+    ctx.quadraticCurveTo(ankle.x + 26, ankle.y + 3, ankle.x + 12, ankle.y - 2);
+    ctx.closePath();
+  }, fill, rim * 0.9);
+
+  /* 曲柄 + 踏板（远侧先画，近侧后画） */
+  if (far) {
+    tube(BB.x, BB.y, p.x, p.y, 5, rgb(mix(C.ink, C.ink2, 0.55)), 0.3);
+  } else {
+    tube(BB.x, BB.y, p.x, p.y, 6.4, rgb(mix(C.ink2, C.rim, 0.32)), 1.3);
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4.2, 0, TAU);
+    ctx.fillStyle = rgb(mix(C.ink2, C.rim, 0.42)); ctx.fill();
+    /* 踏板面 */
+    sil(function () { capsulePath(ctx, p.x - 9, p.y + 5, p.x + 11, p.y + 5, 4, 4); },
+        rgb(mix(C.ink2, C.rim, 0.26)), 1.2);
+  }
+}
+
+/* ══════════════════════════ 主体：鹈鹕 ══════════════════════════ */
+/* 躯干（围绕髋旋转 TORSO_A） */
+function torsoRot(ca, sa, lx, ly) {
+  return { x: HIP.x + lx * ca - ly * sa, y: HIP.y + lx * sa + ly * ca };
+}
+
+/* 躯干：卵形、前倾，腹部压在车座上 */
+function bodyPath() {
+  ctx.beginPath();
+  ctx.moveTo(18, 26);
+  ctx.bezierCurveTo(-20, 33, -64, 16, -84, -24);         // 腹 → 后腰
+  ctx.bezierCurveTo(-99, -62, -70, -99, -22, -106);      // 后腰 → 臀背
+  ctx.bezierCurveTo(20, -112, 55, -92, 62, -62);         // 臀背 → 肩
+  ctx.bezierCurveTo(68, -33, 53, 7, 18, 26);             // 胸 → 腹
+  ctx.closePath();
+}
+/* 短尾（鹈鹕特征：短、低、后指） */
+function tailPath(t) {
+  ctx.beginPath();
+  ctx.moveTo(-68, -44);
+  ctx.quadraticCurveTo(-88, -46, -102 - t * 3, -33 + t * 5);
+  ctx.quadraticCurveTo(-108 - t * 3, -24 + t * 4, -98, -20 + t * 3);
+  ctx.quadraticCurveTo(-84, -18, -76, -24 + t * 2);
+  ctx.quadraticCurveTo(-70, -32, -68, -44);
+  ctx.closePath();
+}
+/* 远侧翅膀（在躯干背后，次级摆动） */
+function farWingPath(t) {
+  ctx.beginPath();
+  ctx.moveTo(38, -92);
+  ctx.bezierCurveTo(8, -106, -44, -102, -86, -74 + t * 6);
+  ctx.bezierCurveTo(-98, -66 + t * 7, -104, -58 + t * 8, -106, -48 + t * 8);
+  ctx.bezierCurveTo(-80, -46 + t * 5, -32, -56, 38, -92);
+  ctx.closePath();
+}
+/* 近侧翅膀（叠在躯干上，翼尖随节奏摆动） */
+function nearWingPath(t) {
+  ctx.beginPath();
+  ctx.moveTo(50, -88);
+  ctx.bezierCurveTo(16, -114, -46, -112, -92, -88 + t * 6);
+  ctx.bezierCurveTo(-110, -80 + t * 8, -120, -72 + t * 9, -118, -62 + t * 10);
+  ctx.bezierCurveTo(-116, -52 + t * 8, -104, -48 + t * 6, -92, -50 + t * 4);
+  ctx.bezierCurveTo(-56, -56, -24, -68, 50, -88);
+  ctx.closePath();
+}
+/* 翼尖初级飞羽分缝 */
+function wingFeathers(t) {
+  ctx.save();
+  ctx.strokeStyle = rgba(mix(C.ink, C.haze, 0.44), 0.52);
+  ctx.lineWidth = 1.4;
+  for (var i = 0; i < 4; i++) {
+    var s = i / 3;
+    ctx.beginPath();
+    ctx.moveTo(-68 - i * 13, -56 - s * 10);
+    ctx.lineTo(-96 - i * 11 + t * 6, -40 - s * 12 + t * 5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ── 头框架内的长喙 + 巨喉囊 —— 鹈鹕最核心的识别特征 ── */
+function billUpperPath() {
+  ctx.beginPath();
+  ctx.moveTo(13, -10);
+  ctx.quadraticCurveTo(58, -14, 100, -3);
+  ctx.quadraticCurveTo(114, 3, 106, 10);          // 喙尖下钩
+  ctx.quadraticCurveTo(56, 4, 13, 3);
+  ctx.closePath();
+}
+/* 喉囊：自下喙往下鼓出一大囊，后缘收向喉部 */
+function pouchPath(t) {
+  ctx.beginPath();
+  ctx.moveTo(13, 3);
+  ctx.lineTo(104, 9);                                          // 下喙（近直线）
+  ctx.bezierCurveTo(99, 40 + t * 4, 74, 58 + t * 5, 46, 48 + t * 4);
+  ctx.bezierCurveTo(24, 40 + t * 3, 2, 26, -12, 14);
+  ctx.bezierCurveTo(-20, 6, 2, -4, 13, 3);
+  ctx.closePath();
+}
+/* 头部轮廓（含后脑枕羽） */
+function headPath() {
+  ctx.beginPath();
+  ctx.moveTo(14, 6);                                  // 喙根下方
+  ctx.bezierCurveTo(20, -10, 12, -18, -2, -18);       // 前额
+  ctx.bezierCurveTo(-16, -18, -24, -12, -28, -6);     // 头顶
+  ctx.quadraticCurveTo(-38, -11, -41, -2);            // 枕羽外延
+  ctx.quadraticCurveTo(-31, 4, -23, 9);
+  ctx.bezierCurveTo(-10, 17, 8, 14, 14, 6);           // 下颌 → 喉
+  ctx.closePath();
+}
+
+function drawPelican(ang, pitch, headBob) {
+  var A = TORSO_A + pitch;
+  var ca = Math.cos(A), sa = Math.sin(A);
+  var inkFill = rgb(C.ink);
+
+  ctx.save();
+  ctx.translate(HIP.x, HIP.y);
+  ctx.rotate(A);
+
+  /* 远侧翅膀（体后） */
+  sil(function () { farWingPath(Math.sin(2 * ang - 0.9)); },
+      rgb(mix(C.ink, C.haze, 0.18)), 0.42);
+
+  /* 躯干 */
+  sil(bodyPath, inkFill, 1.0);
+
+  /* 短尾 */
+  sil(function () { tailPath(Math.sin(2 * ang + 2.1)); }, inkFill, 0.95);
+
+  /* 近侧翅膀（叠在身体上） */
+  sil(function () { nearWingPath(Math.sin(2 * ang + 1.1)); },
+      rgb(mix(C.ink, C.ink2, 0.45)), 0.85);
+  wingFeathers(Math.sin(2 * ang + 1.1));
+
+  ctx.restore();
+
+  /* ── 脖颈：世界坐标下的 S 形锥管（从肩到头的后缘） ── */
+  var nb = torsoRot(ca, sa, NECK_BASE_L.x, NECK_BASE_L.y);
+  var neckPts = bezPts(
+    [nb.x - 6,  nb.y + 12],
+    [nb.x - 14, -296],
+    [nb.x + 16, -330],
+    [NECK_END_W.x, NECK_END_W.y],
+    15
+  );
+  sil(function () { taperPath(ctx, neckPts, 46, 17); }, inkFill, 1.15);
+
+  /* ── 头 / 长喙 / 巨喉囊（世界坐标，绕头心旋转） ── */
+  ctx.save();
+  ctx.translate(HEAD_W.x, HEAD_W.y);
+  ctx.rotate(0.085 + headBob);
+
+  /* 头部（含枕羽） */
+  sil(headPath, inkFill, 1.30);
+
+  /* 长喙（上颌） */
+  sil(billUpperPath, inkFill, 1.55);
+
+  /* 喉囊：逆光透亮的暖橙 —— 鹈鹕的灵魂 */
+  var pt = Math.sin(2 * ang - 0.75);
+  ctx.save();
+  ctx.rotate(pt * 0.045);
+  pouchPath(pt);
+  ctx.fillStyle = rgba(mix(C.pouch, [255, 196, 130], 0.22), 0.34);
+  ctx.fill();
+  /* 囊内透光渐变 */
+  ctx.save();
+  pouchPath(pt); ctx.clip();
+  var pg = ctx.createLinearGradient(0, -6, 60, 60);
+  pg.addColorStop(0.00, rgba(C.pouch, 0.24));
+  pg.addColorStop(0.42, rgba([255, 162, 72], 0.44));
+  pg.addColorStop(1.00, rgba([255, 222, 160], 0.62));
+  ctx.fillStyle = pg; ctx.fillRect(-30, -30, 160, 110);
+  ctx.restore();
+  /* 囊缘金边 */
+  pouchPath(pt);
+  ctx.strokeStyle = rgba(C.rimHot, 0.88);
+  ctx.lineWidth = RIM_K * 1.3;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  /* 下喙分缝 */
+  ctx.beginPath();
+  ctx.moveTo(13, 3); ctx.lineTo(104, 9);
+  ctx.strokeStyle = rgba(C.rim, 0.70);
+  ctx.lineWidth = RIM_K * 0.8;
+  ctx.stroke();
+  ctx.restore();
+
+  /* 眼：逆光下只剩一粒高光 */
+  ctx.beginPath(); ctx.arc(2, -7, 3.6, 0, TAU);
+  ctx.fillStyle = rgba(C.eye, 0.94); ctx.fill();
+  ctx.beginPath(); ctx.arc(2, -7, 7.5, 0, TAU);
+  ctx.fillStyle = rgba(C.rimHot, 0.14); ctx.fill();
+
+  ctx.restore();  // 头
+
+  /* 返回肩点与颈线（供围巾定位） */
+  return { sh: torsoRot(ca, sa, 30, -84), neck: neckPts };
+}
+
+/* 围巾：系在颈上向后飘，次级摆动（全部由 ang 的整数谐波驱动 → 零漂移） */
+function drawScarf(ang, basePt) {
+  var N = 14, seg = 9.0, pts = [], i, amp;
+  var bx = basePt[0], by = basePt[1];
+  for (i = 0; i <= N; i++) {
+    amp = 1.6 + i * 1.5;
+    var w1 = Math.sin(2 * ang - i * 0.46 + 0.7);
+    var w2 = Math.sin(3 * ang - i * 0.62 + 1.9);
+    pts.push([
+      bx - i * seg * 1.02 - (w1 * 0.55 + w2 * 0.35) * amp * 0.20,
+      by - i * seg * 0.10 + (w1 * 0.75 + w2 * 0.45) * amp
+    ]);
+  }
+  taperPath(ctx, pts, 13.5, 4.5);
+  ctx.fillStyle = rgba(C.scarf, 0.95);
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = RIM_G; ctx.lineWidth = RIM_K * 1.5;
+  ctx.lineJoin = 'round';
+  taperPath(ctx, pts, 13.5, 4.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ══════════════════════════ 组装主体 ══════════════════════════ */
+function drawSubject(ang, bob, roll, pitch, headBob) {
+  var S = M.S;
+  ctx.save();
+  ctx.translate(M.bx, M.gy + bob * S);
+  ctx.rotate(roll);
+  ctx.scale(S, S);
+  ctx.rotate(pitch * 0.30);      // 整车俯仰（绕触地点，极轻微）
+
+  /* 统一的金色边缘光渐变：沿光轴，越靠太阳越亮 */
+  var cx = -6, cy = -176, rad = 210, Lx = LIGHT[0], Ly = LIGHT[1];
+  var g = ctx.createLinearGradient(cx - Lx * rad, cy - Ly * rad, cx + Lx * rad, cy + Ly * rad);
+  g.addColorStop(0.00, 'rgba(255,168, 86,0.30)');
+  g.addColorStop(0.46, 'rgba(255,184,104,0.46)');
+  g.addColorStop(0.78, 'rgba(255,208,136,0.80)');
+  g.addColorStop(0.93, 'rgba(255,236,182,0.97)');
+  g.addColorStop(1.00, 'rgba(255,252,232,1)');
+  RIM_G = g;
+  RIM_K = 2.45 / S;
+
+  var wheelAng = ang * GEAR;         // 车轮与曲柄严格同源（齿比 2.25）
+
+  drawLeg(ang + Math.PI, true);      // 远腿（远曲柄 + 远踏板）
+  drawWheel(REAR.x, REAR.y, wheelAng);
+  drawWheel(FRONT.x, FRONT.y, wheelAng);
+  drawChain();
+  drawFrame();
+  var pk = drawPelican(ang, pitch, headBob);
+  drawScarf(ang, pk.neck[8]);
+  drawLeg(ang, false);               // 近腿（近曲柄 + 近踏板）
+
+  RIM_G = null;
+  ctx.restore();
+}
+
+/* ══════════════════════════ 近景 ══════════════════════════ */
+function drawSpeedLines() {
+  var S = M.S;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (var i = 0; i < 15; i++) {
+    var ph = ((T * (1.0 + rnd(i * 2.7) * 0.9) + rnd(i * 6.1)) % 1);
+    var y = M.horizon + (H - M.horizon) * (0.22 + rnd(i * 4.9) * 0.78);
+    var len = W * (0.11 + rnd(i * 8.3) * 0.24);
+    var x = W * 1.06 - ph * (W * 1.6) + rnd(i * 3.3) * W * 0.2;
+    var a = Math.sin(ph * Math.PI) * 0.095;
+    var g = ctx.createLinearGradient(x, y, x + len, y);
+    g.addColorStop(0, rgba([255, 216, 164], 0));
+    g.addColorStop(0.5, rgba([255, 216, 164], a));
+    g.addColorStop(1, rgba([255, 216, 164], 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, len, Math.max(1, S * 0.6));
+  }
+  ctx.restore();
+}
+
+/* 近景草丛：高频掠过，强化速度感 */
+function drawForeground() {
+  var travel = T * V_DASH * 1.16, SP = 0.60;
+  var k0 = Math.ceil((travel + 0.05) / SP), k1 = Math.floor((travel + 2.8) / SP);
+  for (var k = k0; k <= k1; k++) {
+    var d = k * SP - travel;
+    if (d <= 0.05) continue;
+    var f = 1 / d, y = depth2y(d);
+    if (y < H * 0.78) continue;
+    var side = (k % 3 === 0) ? 1 : -1;
+    var u = side * (2.0 + ((k * 17) % 9) * 0.32);
+    var x = px(u, f);
+    var hgt = M.rw1 * 0.58 * f * (0.6 + ((k * 5) % 4) * 0.25);
+    ctx.fillStyle = rgba(C.ink, clamp((1 - d / 2.8) * 1.2, 0, 1) * 0.92);
+    ctx.beginPath();
+    ctx.moveTo(x - hgt * 0.16, y);
+    for (var b = -2; b <= 2; b++) {
+      ctx.quadraticCurveTo(x + b * hgt * 0.09, y - hgt * (0.75 + rnd(k + b) * 0.5),
+                           x + b * hgt * 0.10, y - hgt * (0.20 + rnd(k + b) * 0.6));
+    }
+    ctx.lineTo(x + hgt * 0.16, y);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+/* 整体逆光泛光（叠加混合） */
+function drawBloom() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  var g = ctx.createRadialGradient(M.sunX, M.sunY, 0, M.sunX, M.sunY, Math.max(W, H) * 0.64);
+  g.addColorStop(0.00, 'rgba(255,198,124,0.21)');
+  g.addColorStop(0.34, 'rgba(255,150,80,0.085)');
+  g.addColorStop(1.00, 'rgba(255,120,60,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  /* 主体背光晕（让剪影"烧"进天空） */
+  var sx = M.bx, sy = M.gy - 180 * M.S, sr = M.S * 300;
+  var g2 = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+  g2.addColorStop(0.00, 'rgba(255,168,86,0.11)');
+  g2.addColorStop(1.00, 'rgba(255,140,70,0)');
+  ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+/* ══════════════════════════ 主循环 ══════════════════════════
+   唯一时基：T（秒）→ ang = 曲柄相位。车轮、曲柄、腿、次级摆动、
+   尘土、视差全部由 T / ang 推导，因此天然零相位漂移。            */
+var T = 0, V_DASH = 2.1, CADENCE = 0.78;
+var last = 0, frozen = null;
+var mq = /[?&]t=([0-9.]+)/.exec(location.search);
+if (mq) frozen = parseFloat(mq[1]);
+
+function frame(now) {
+  var dt = last ? (now - last) / 1000 : 0;
+  last = now;
+  if (dt > 0.05) dt = 0.05;
+  if (frozen === null) T += dt; else T = frozen;
+
+  var ang = TAU * CADENCE * T;                    // 曲柄相位（唯一时基）
+
+  /* 车身颠簸：2× / 4× 曲柄谐波（整数倍 → 始终与踩踏同拍） */
+  var bob     = Math.sin(2 * ang - 0.70) * 1.55 + Math.sin(4 * ang + 1.10) * 0.5;
+  var roll    = Math.sin(ang + 1.90) * 0.016 + Math.sin(3 * ang + 0.4) * 0.005;
+  var pitch   = Math.sin(2 * ang - 0.25) * 0.030 + Math.sin(ang + 0.4) * 0.009;
+  var headBob = Math.sin(2 * ang - 0.45) * 0.048 + Math.sin(ang) * 0.011;
+
+  drawSky();
+  drawStars(T);
+  drawSun();
+  drawClouds(T);
+  drawMountains(T);
+  drawBirds(T);
+  drawGround();
+  drawRoad();
+  drawTrees();
+  drawPoles();
+  drawShadow(bob);
+  drawDust(false);
+  drawSubject(ang, bob, roll, pitch, headBob);
+  drawDust(true);
+  drawSpeedLines();
+  drawForeground();
+  drawBloom();
+
+  if (frozen === null) requestAnimationFrame(frame);
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.clientWidth || window.innerWidth;
+  H = cv.clientHeight || window.innerHeight;
+  cv.width  = Math.round(W * DPR);
+  cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  layout();
+  buildStatic();
+  if (frozen !== null) frame(0);
+}
+
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function () { setTimeout(resize, 240); });
+resize();
+if (frozen === null) requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

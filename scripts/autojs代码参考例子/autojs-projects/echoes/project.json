@@ -1,0 +1,8 @@
+{
+  "name": "echoes",
+  "main": "main.js",
+  "packageName": "com.pony.echoes",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "ignore": ["/node_modules/", "/.git/", "/temp/"]
+}

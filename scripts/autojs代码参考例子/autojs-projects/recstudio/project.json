@@ -1,0 +1,47 @@
+{
+  "abis": [
+    "arm64-v8a"
+  ],
+  "assets": [],
+  "build": {
+    "id": "6A14E6B5-1",
+    "number": 1,
+    "time": 1789145767605
+  },
+  "useFeatures": [],
+  "launchConfig": {
+    "launcherVisible": true,
+    "runOnBoot": false,
+    "splashVisible": true,
+    "slug": "Powered by AutoJs6",
+    "hideLogs": true
+  },
+  "libs": [],
+  "main": "main.js",
+  "name": "recstudio",
+  "packageName": "com.pony.recstudio",
+  "permissions": [
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "android.permission.INTERNET",
+    "android.permission.MANAGE_EXTERNAL_STORAGE",
+    "android.permission.READ_EXTERNAL_STORAGE",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "android.permission.SYSTEM_ALERT_WINDOW",
+    "android.permission.WAKE_LOCK",
+    "android.permission.WRITE_EXTERNAL_STORAGE"
+  ],
+  "signatureScheme": "V1 + V2",
+  "versionCode": 1,
+  "versionName": "1.0",
+  "ignore": [
+    "node_modules",
+    ".git",
+    "*.md",
+    "*.zip",
+    ".keep",
+    "build"
+  ]
+}

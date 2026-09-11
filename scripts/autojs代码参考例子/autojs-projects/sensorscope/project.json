@@ -1,0 +1,8 @@
+{
+  "name": "sensorscope",
+  "main": "main.js",
+  "packageName": "com.pony.sensorscope",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "ignore": ["/node_modules/", "/.git/", "/temp/"]
+}
