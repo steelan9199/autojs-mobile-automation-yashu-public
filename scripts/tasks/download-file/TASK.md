@@ -13,6 +13,7 @@ args: { "name": "string*", "roots": "string", "saveAs": "string" }
 - 与"电脑→手机下发脚本"方向相反：本模板是**手机→电脑**拉取；要把 PC 脚本发到手机执行，请用 `run-task.js` 按模板名下发，不要混用。
 
 ## 什么时候不该用
+- **不知道文件名，只想"取手机上最新的 N 个视频"** → 用 `download-latest-videos`（`count` 控制个数，默认取最新 1 个）。本模板必须给出确切文件名或路径。
 - 想下载整个文件夹（含子目录、多文件）→ 先 `zip-folder` 打包成单个 zip，再 `download-file` 拉回；本模板只做单文件拉取。
 - 想"把电脑上的脚本推到手机执行" → 那是 `run-task.js --path tasks/xxx/xxx.js`（或模板名），本模板只做反向拉取。
 - 想要的是"看屏幕"（截图） → 用 `screenshot` / `crop-screenshot`，不要拿本模板去传图片。
