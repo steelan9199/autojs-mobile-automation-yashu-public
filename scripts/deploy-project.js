@@ -311,6 +311,31 @@ function quit(code) {
   throw { __quit__: code };
 }
 
+/**
+ * 402 + LICENSE_REQUIRED → 生成给 AI 原样转达用户的中文提示块；其他情况返回 null。
+ * 走 stdout：这是 AI 必然读取的通道，避免"试用用完"被误判成网络故障。
+ */
+function formatLicenseNotice(status, text) {
+  if (status !== 402) return null;
+  let body = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!body || body.error !== "LICENSE_REQUIRED") return null;
+  return [
+    "========== 本技能需要授权（免费试用已用完）==========",
+    "机器码   : " + body.machineId,
+    "购买地址 : " + body.purchaseUrl,
+    "授权文件 : " + body.licensePath,
+    "激活方式 : 把购买得到的授权码写入上面这个文件，立即生效，无需重启服务",
+    "---------- 原始返回（供程序解析） ----------",
+    JSON.stringify(body),
+    "===================================================",
+  ].join("\n");
+}
+
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
   const { name, main, run, argsRaw, keep, dryRun, help, zip, keepZip } = parsed;
@@ -504,6 +529,11 @@ async function main() {
     });
     const text = await resp.text();
     if (!resp.ok) {
+      const notice = formatLicenseNotice(resp.status, text);
+      if (notice) {
+        process.stdout.write(notice + "\n");
+        quit(5); // 5 = 需要授权（4 已被"手机端脚本根目录缺失"占用）
+      }
       process.stderr.write(`运行失败 (HTTP ${resp.status}): ${text}\n`);
       quit(1);
     }

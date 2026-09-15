@@ -110,6 +110,33 @@ async function getJson(url) {
   return { ok: resp.ok, status: resp.status, data, text };
 }
 
+/**
+ * 402 + LICENSE_REQUIRED → 生成给 AI 原样转达用户的中文提示块；其他情况返回 null。
+ *
+ * 为什么要单独走 stdout：这是 AI 必然读取的通道。此前 402 只进 stderr，AI 很容易
+ * 把"试用次数用完"误判成网络故障或接口不可用，从而静默失败、不告知用户购买入口。
+ */
+function formatLicenseNotice(status, text) {
+  if (status !== 402) return null;
+  let body = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!body || body.error !== "LICENSE_REQUIRED") return null;
+  return [
+    "========== 本技能需要授权（免费试用已用完）==========",
+    "机器码   : " + body.machineId,
+    "购买地址 : " + body.purchaseUrl,
+    "授权文件 : " + body.licensePath,
+    "激活方式 : 把购买得到的授权码写入上面这个文件，立即生效，无需重启服务",
+    "---------- 原始返回（供程序解析） ----------",
+    JSON.stringify(body),
+    "===================================================",
+  ].join("\n");
+}
+
 // 任务单是否到达终态
 function isTerminal(status) {
   return status === "success" || status === "failed" || status === "stopped";
@@ -171,6 +198,11 @@ async function submitAndWait(serverBase, body, waitSec) {
   });
   const text = await resp.text();
   if (!resp.ok) {
+    const notice = formatLicenseNotice(resp.status, text);
+    if (notice) {
+      process.stdout.write(notice + "\n");
+      quit(5); // 5 = 需要授权（4 已被"手机端脚本根目录缺失"占用）
+    }
     process.stderr.write(text + "\n");
     quit(1);
   }
@@ -378,6 +410,10 @@ async function main() {
   try {
     await submitAndWait(serverBase, body, waitSec);
   } catch (err) {
+    // quit() 抛的是 {__quit__:code} 哨兵，不是真异常——必须原样上抛。
+    // 否则会被这里当网络错误接住：多打一行"请求失败: undefined"，
+    // 并把退出码从 quit() 设定值改写成 2（授权信号因此永远传不出去）。
+    if (err && err.__quit__ !== undefined) throw err;
     process.stderr.write(`请求失败: ${err.message}\n`);
     quit(2);
   }
