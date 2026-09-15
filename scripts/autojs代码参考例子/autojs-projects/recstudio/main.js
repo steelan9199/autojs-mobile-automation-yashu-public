@@ -32,7 +32,9 @@ var store = require("./modules/settings.js");
 
 /* ── 参数来源优先级：① args.json（PC 侧部署带的自测参数） ② 手机存档 ③ 默认值 ──
  * ⚠️ 真机实测（2026-09-11）：run_project 工程模式**不会**注入 __TASK_ARGS_PATH，
- *    所以必须回退到 __projectDir/args.json 与固定部署落点。 */
+ *    所以必须回退到工程内的 args.json 与固定部署落点。
+ *    注意 __projectDir 同样**从未被注入**，下面只是防御性 typeof 判断、不会命中；
+ *    工程目录的正解是 files.cwd()（实测即工程目录）或固定部署落点。 */
 var args = {};
 (function loadArgs() {
   var cands = [];

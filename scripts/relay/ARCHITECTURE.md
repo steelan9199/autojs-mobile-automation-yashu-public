@@ -137,8 +137,10 @@ AI 侧 `POST /run` 传 `path`（如 `tasks/tap-point/tap-point.js`）时，手�
   自动把回执补写 `__taskId`）→ 回执经 ws 以 `task_result`（另有 `task_started` /
   `task_progress` / `task_alive` / `task_stopped`）按号归位。
 - **参数文件**：按 taskId 独立写 `scripts-from-computer/data/task-args/<taskId>.json`
-  （并发权威源），并在脚本头部注入其路径为 `__TASK_ARGS_PATH`——模板读参唯一权威源，
-  无兜底副本。
+  （并发权威源），并在脚本头部注入其路径为 `__TASK_ARGS_PATH`——这是**单文件模板**
+  （`/run` 路径）读参的唯一权威源，无兜底副本。⚠️ **工程模式（`/run-project`）是例外**：
+  `runProject` 用 `execScriptFile(mainPath, { path: projectDir })` **只注入 require 搜索
+  路径，不注入该变量**，工程需自行倒扫 task-args 目录取参（详见 `references/部署真实工程.md`）。
 - **心跳与死亡检测**：手机客户端每 10s 对运行中任务报 `task_alive`；引擎连续 2 个
   周期不在 `engines.all()` 且无回执 → 客户端直接落 `task_result` 失败（捕捉静默崩溃）。
   连接级引擎假死由中继应用层心跳判死兜底（第 6 节第 7 条）；提交后未被接单的任务单
