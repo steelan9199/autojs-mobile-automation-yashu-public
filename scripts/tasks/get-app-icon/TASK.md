@@ -28,7 +28,7 @@ args: { "name": "string*", "format": "string", "outName": "string" }
 - 解析不到应用：`{ok:0, err:"未找到应用: xxx"}`。
 - 该应用无图标：`{ok:0, err:"该应用无可用图标"}`。
 - 未连电脑中继：仍会存到手机 sdcard（`/sdcard/autojs_temp/icons/`），回执带 `phonePath` + `note`，**不报错中断**，AI 可告知用户图标已存手机。
-- 成功回执：`{ok:1, path:"<PC路径>", phonePath:"<sdcard>", size:N, name:"xxx.png", app:"抖音", pkg:"..."}`。若 `path` 非空，**必须把该图片经 `present_files` 展示给用户（或至少把绝对路径写进回复）**，不能只回执就结束（见 SKILL.md 第 3 步「截图结果必须展示给用户」硬规则——图标图片同理）。`path` 为空时改用 `phonePath` 提示用户去手机取。
+- 成功回执：`{ok:1, path:"<PC路径>", phonePath:"<sdcard>", size:N, name:"xxx.png", app:"抖音", pkg:"..."}`。若 `path` 非空，**必须把该图片经 `present_files` 展示给用户（或至少把绝对路径写进回复）**，不能只回执就结束（见 SKILL.md 硬约束 4「结果交付」——图标图片同理）。`path` 为空时改用 `phonePath` 提示用户去手机取。
 
 ## 示例调用
 ```bash

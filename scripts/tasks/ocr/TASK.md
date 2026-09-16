@@ -10,7 +10,7 @@ args:
     "detail": "boolean",
     "query": "string",
     "minConfidence": "number",
-    "mode": "string",
+    "mode": "string"
   }
 ---
 

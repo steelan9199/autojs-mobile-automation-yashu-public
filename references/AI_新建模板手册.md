@@ -211,7 +211,7 @@ scripts/tasks/<模板名>/
 
 AI 分两级读取，最大化省 token：
 
-- **第 0 级（规划时，必做）**：`node scripts/scan-tasks.js` 只解析每个 TASK.md 前言里的 `name` + `description`，输出精简 JSON 给 AI 挑模板。**不读正文、不读脚本。**
+- **第 0 级（规划时，必做）**：`node scripts/scan-tasks.js` 只解析每个 TASK.md 前言里的 `name` + `description`，输出每行 `name — description` 给 AI 挑模板。**不读正文、不读脚本。**
 - **第 1 级（选中后）**：AI 才 Read 选中模板的完整 `TASK.md` 正文，理解场景/坑/兜底，必要时改脚本再下发。
 
 `TASK.md` 格式（前言对齐 skill.md，3 个元属性）：
@@ -282,6 +282,7 @@ events.on("exit", function () {
 - 失败：`{ok:0, err:"人话原因"}`——err 要能让 AI 直接看懂并换策略，不要只写 "error"；
 - **禁止回传整棵 UI 树或大段文本**——回执会进入 AI 上下文，每一条都是 token 成本；
 - `result` 必须是可 JSON 序列化的纯对象，不含函数、UiObject 引用。
+- **不要手写 `__taskId`**：客户端注入的 prologue 会把回执自动补上本次任务的 `__taskId`（2026-09-16 起真正生效），PC 侧据此精确归位；模板自己带了也不冲突（有则不覆盖）。
 
 **UI / 常驻类脚本例外（建好即回执）**：若模板用 `ui.layout()` 弹窗、脚本自身不退出（窗口常驻），**不能只靠 exit 回执**——窗口不关就永不 exit，PC 端 `run-task.js` 默认等 30 秒后按超时返回、任务单收不到结果。完整骨架（本节为权威本）：
 

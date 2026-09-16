@@ -1,0 +1,5 @@
+{
+  "name": "repro-victim",
+  "main": "main.js",
+  "ignore": ["node_modules", "*.log"]
+}

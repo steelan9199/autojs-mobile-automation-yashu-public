@@ -12,6 +12,11 @@
  *   4. 通过模块导出 start(config) / stop() / setStatusCallback(fn) 由 UI 层驱动；
  *   5. 服务器 IP/端口由 config 传入，不再硬编码。
  *
+ * ⚠️ 与 autojs-task-phone-client.js 是**同源双份**：任务单、prologue 打标、无主回执
+ *   兜底归因、run / run_project 等核心逻辑逐段对应。改动其中一份时必须同步另一份，
+ *   否则重新打包的 APK 会带回老 bug（2026-09-16 BUG-01 修复曾漏掉本文件）。
+ *   本文件改动后需在 AutoJs6 里重新打包 APK 才生效（无热更新路径）。
+ *
  * 保留的能力：WebSocket 中继连接（断线自愈重连 + 应用层心跳）、任务执行
  * （run / run_project）、任务心跳与按单强杀、截屏上传、结果回传、
  * 连接状态悬浮球（红/绿/蓝）、删除工程。
@@ -192,17 +197,44 @@ function newTaskId() {
   );
 }
 
+// 未带 taskId 的回执归因（兜底；正常路径已由 prologue 代理补上 __taskId）：
+//   优先归给「引擎已退出」的最新任务——发出回执的引擎通常刚刚结束，
+//   而后来居上的任务引擎还在跑；只这一个判据就能挡掉绝大多数串号。
+//   若没有任何已退出引擎（例如回执来自常驻 UI 引擎），退化为「最新未决任务」。
 function attributeUntaggedTask() {
-  var best = null;
+  var aliveIds = null;
+  try {
+    aliveIds = {};
+    var all = engines.all();
+    for (var i = 0; i < all.length; i++) aliveIds[all[i].id] = true;
+  } catch (e) {
+    aliveIds = null; // 取不到引擎列表则退回纯「最新」策略
+  }
+
+  var bestLatest = null;
+  var bestFinished = null;
   for (var id in taskRegistry) {
-    if (
-      best === null ||
-      taskRegistry[id].startedAt > taskRegistry[best].startedAt
-    ) {
-      best = id;
+    var t = taskRegistry[id];
+    if (bestLatest === null || t.startedAt > taskRegistry[bestLatest].startedAt) {
+      bestLatest = id;
+    }
+    if (aliveIds) {
+      // engineId 取不到时按「存活」处理（不做无依据的死亡判定）
+      var alive =
+        t.engineId === null || t.engineId === undefined
+          ? true
+          : aliveIds[t.engineId] === true;
+      if (!alive) {
+        if (
+          bestFinished === null ||
+          t.startedAt > taskRegistry[bestFinished].startedAt
+        ) {
+          bestFinished = id;
+        }
+      }
     }
   }
-  return best;
+  return bestFinished !== null ? bestFinished : bestLatest;
 }
 
 function finishClientTask(taskId, payloadStr) {
@@ -225,19 +257,78 @@ function finishClientTask(taskId, payloadStr) {
   orbBusyDec();
 }
 
+// 注入到任务脚本头部的引导代码（严格 ES5，运行在子脚本引擎里）：
+//   __TASK_ID / __TASK_ARGS_PATH 全局、__reportProgress 进度上报、
+//   遮蔽 events.broadcast 为 JS 代理 → autojs_result 回执自动补写 __taskId。
+//
+// ⚠️ 2026-09-16 重要修复（回执串号的真正根因，与 autojs-task-phone-client.js 同步）：
+//   events.broadcast 是**强类型 Java 对象**（org.autojs.autojs.core.broadcast.BroadcastEmitter），
+//   旧版那套「包装 emit」的写法根本装不上，异常被 try/catch 静默吞掉：
+//     · events.broadcast = {}       → InternalError: 无法将 [object Object] 转换为 BroadcastEmitter
+//     · events.broadcast.emit = fn  → InternalError: Java 方法 "emit" 无法被赋值
+//   后果：所有回执其实都是「无主回执」，只能靠 attributeUntaggedTask() 兜底 ——
+//   一旦任务在时间上重叠，迟到回执就会被挂到后一个任务单上（实测：受害任务单 6.5s 被顶）。
+//   ✅ 可用路径（真机实测通过）：events 的 JS 包装是**每引擎独立**的，且允许
+//      Object.defineProperty —— 用它把 broadcast 定义成 JS 代理，即可真正拦到 emit。
+// ── 注入代码的三层拼装：父引擎 → 子引擎 → 孙引擎，任意深度行为一致 ──────────────
+//   CORE  引导四件套：__TASK_ID / __TASK_ARGS_PATH / __reportProgress / 广播打标代理。
+//         以 %TID% / %AP% 占位：替换后的副本在本引擎直接执行；**未替换的原样**经
+//         JSON 化存进运行时变量 __INJ，供 __spawnSub 复用到子引擎（占位留在串里）。
+//   SPAWN __spawnSub 本体，同样 JSON 化自存为运行时变量 __SPAWN_SRC，
+//         于是子引擎里也有一整套 __spawnSub/__INJ —— 拉孙脚本同样自动带 tag。
+//   ⚠️ 必须先对 CORE 做替换、再把**未替换的** CORE 写进 __INJ：String.replace 只替
+//      第一个匹配，顺序颠倒会替到 JSON 里的占位，本引擎就拿不到真实 taskId 了。
+// ─────────────────────────────────────────────────────────────────────────────
 function buildTaskPrologue(taskId, argsPath) {
-  return (
-    "var __TASK_ID=" +
-    JSON.stringify(taskId) +
-    ";" +
-    "var __TASK_ARGS_PATH=" +
-    JSON.stringify(argsPath) +
-    ";" +
+  var CORE =
+    "var __TASK_ID=%TID%;" +
+    "var __TASK_ARGS_PATH=%AP%;" +
     "function __reportProgress(m){try{events.broadcast.emit('autojs_progress',JSON.stringify({__taskId:__TASK_ID,progress:String(m),ts:new Date().getTime()}))}catch(e){}}" +
-    "(function(){try{var b=events.broadcast,o=b.emit;" +
-    "if(o&&o.__tWrap&&o.__tWrap!==__TASK_ID){return}" +
-    "var w=function(t,d){if(t==='autojs_result'&&typeof d==='string'){try{var p=JSON.parse(d);if(!p.__taskId){p.__taskId=__TASK_ID;d=JSON.stringify(p)}}catch(e){}}return o.call(b,t,d)};" +
-    "w.__tWrap=__TASK_ID;b.emit=w}catch(e){}})();"
+    "(function(){try{var real=events.broadcast;" +
+    "var tag=function(d){if(typeof d==='string'){try{var p=JSON.parse(d);if(p&&!p.__taskId){p.__taskId=__TASK_ID;d=JSON.stringify(p)}}catch(e){}}return d};" +
+    "var names=['emit','emitSticky','emitStickyOnce','on','once','addListener','prependListener','prependOnceListener','removeListener','removeAllListeners','listeners','listenerCount','eventNames','setMaxListeners','getMaxListeners','onBroadcast','unregister','timer'];" +
+    "var proxy={};" +
+    "for(var i=0;i<names.length;i++){(function(n){try{if(typeof real[n]!=='function'){return}" +
+    "proxy[n]=function(){var a=arguments;if((n==='emit'||n==='emitSticky'||n==='emitStickyOnce')&&a.length>=2&&a[0]==='autojs_result'){try{a[1]=tag(a[1])}catch(e){}}return real[n].apply(real,a)}}catch(e){}})(names[i])}" +
+    "Object.defineProperty(events,'broadcast',{configurable:true,writable:true,value:proxy})" +
+    "}catch(e){}})();";
+  // 子脚本 → 新引擎，且在新引擎里补上同款引导代码（回执因此带父任务号）。
+  // 走 engines.execScript(源码字符串, {path: 子脚本目录})：不落临时文件、require 基准不变。
+  var SPAWN =
+    "function __spawnSub(file,argsPath){" +
+    "try{" +
+    "var f=String(file);" +
+    "if(!/^[\\\\/]/.test(f)&&!/^[A-Za-z]:[\\\\/]/.test(f)){try{f=files.join(files.cwd(),f)}catch(eC){}}" +
+    "var dir=f.replace(/[\\\\/][^\\\\/]*$/,'');" +
+    "var nm=f.replace(/^.*[\\\\/]/,'').replace(/\\.js$/i,'');" +
+    "var code=files.read(f);" +
+    "var ui='';" +
+    "var m=/^[ \\t]*('([^']*)'|\"([^\"]*)\")[ \\t]*;?/.exec(code);" +
+    "if(m){ui=m[1]+';\\n';code=code.slice(m[0].length)}" +
+    "var ap=(argsPath===undefined||argsPath===null||argsPath==='')?__TASK_ARGS_PATH:String(argsPath);" +
+    "var pre=__INJ.replace('%TID%',JSON.stringify(__TASK_ID)).replace('%AP%',JSON.stringify(ap));" +
+    "var head='var __INJ='+JSON.stringify(__INJ)+';var __SPAWN_SRC='+JSON.stringify(__SPAWN_SRC)+';';" +
+    "var ex=engines.execScript(nm,ui+head+pre+__SPAWN_SRC+'\\n'+code,{path:dir});" +
+    "try{if(ex&&ex.getEngine){var en=ex.getEngine();if(en&&en.setTag){en.setTag(__TASK_ID)}}}catch(eT){}" +
+    "return ex" +
+    "}catch(e){" +
+    "try{console.warn('[__spawnSub] 注入失败，回退 execScriptFile: '+e)}catch(e1){}" +
+    "try{return engines.execScriptFile(String(file))}catch(e2){return null}" +
+    "}" +
+    "}";
+  var env =
+    "var __INJ=" +
+    JSON.stringify(CORE) +
+    ";var __SPAWN_SRC=" +
+    JSON.stringify(SPAWN) +
+    ";";
+  return (
+    env +
+    SPAWN +
+    CORE.replace("%TID%", JSON.stringify(taskId)).replace(
+      "%AP%",
+      JSON.stringify(argsPath),
+    )
   );
 }
 
@@ -774,6 +865,34 @@ function runScript(cmd) {
   }
 }
 
+// 工程入口的「注入引导代码」临时入口文件：<工程目录>/__autojs-entry-<taskId>.js
+// 刻意放在工程目录内 → 相对 require 的基准（= 模块自身目录 = 工程根）与
+// files.cwd() 语义和直接执行 main.js 完全一致（详见 runProject）。
+var ENTRY_FILE_PREFIX = "__autojs-entry-";
+
+// 启动时清掉上一会话遗留的注入入口文件（每次运行会按 taskId 重写，无需保留）
+function cleanupStaleProjectEntries() {
+  try {
+    if (!files.isDir(PROJECTS_DIR)) return;
+    var projects = files.listDir(PROJECTS_DIR, function (n) {
+      return files.isDir(files.join(PROJECTS_DIR, n));
+    });
+    for (var i = 0; i < projects.length; i++) {
+      var dir = files.join(PROJECTS_DIR, projects[i]);
+      try {
+        var leftovers = files.listDir(dir, function (n) {
+          return n.indexOf(ENTRY_FILE_PREFIX) === 0 && /\.js$/i.test(n);
+        });
+        for (var j = 0; j < leftovers.length; j++) {
+          try {
+            files.remove(files.join(dir, leftovers[j]));
+          } catch (eR) {}
+        }
+      } catch (eL) {}
+    }
+  } catch (e) {}
+}
+
 // ==================== 执行已部署到手机的真实工程 ====================
 function runProject(cmd) {
   var taskId =
@@ -791,7 +910,7 @@ function runProject(cmd) {
     }
     mergedArgs.__taskId = taskId;
     mergedArgs.__template = cmd.projectName;
-    writeTaskArgs(taskId, mergedArgs);
+    var projectArgsPath = writeTaskArgs(taskId, mergedArgs);
 
     var projectDir = files.join(PROJECTS_DIR, cmd.projectName);
     var projectJsonPath = files.join(projectDir, "project.json");
@@ -818,7 +937,57 @@ function runProject(cmd) {
     }
 
     console.log("执行工程入口: " + mainPath + " taskId=" + taskId);
-    var exec = engines.execScriptFile(mainPath, { path: projectDir });
+    // 在新引擎中执行；结果由子脚本在 exit 时经 broadcast 回传（与 runScript 同一机制）。
+    // 关键 1：config.path 设为工程目录，使 main.js 内的相对 require('./modules/...')
+    // 能按工程根解析（否则 execScriptFile 没有模块上下文，相对 require 会失败）。
+    // 关键 2（与 runScript 对齐）：工程代码同样注入引导代码 prologue——
+    //   __TASK_ID / __TASK_ARGS_PATH / __reportProgress，并遮蔽 autojs_result 广播
+    //   自动补写 __taskId。工程回执因此能按单精确归因，不再依赖「最新未决任务」
+    //   兜底（那条兜底会把迟到的无标签回执错误挂到后一个任务上——实测串号）。
+    //   做法：把入口源码内联进同目录的临时入口文件执行，因此
+    //     · 'ui'; 指令仍处于第一行（AutoJs6 约定，被挤走会导致 UI 模式静默失效）；
+    //     · 临时文件就在工程目录内 → 相对 require 基准 = 模块自身目录 = 工程根，
+    //       files.cwd() 亦为工程目录，语义与直接跑入口完全一致。
+    //   注入过程任何异常都回退「原样直接执行入口」，绝不因注入失败而跑不了工程。
+    var execEntryPath = mainPath;
+    try {
+      var entryCode = files.read(mainPath);
+      var entryUiDirective = "";
+      var entryUiMatch = /^[ \t]*('ui'|"ui")[ \t]*;?/.exec(entryCode);
+      if (entryUiMatch) {
+        entryUiDirective = "'ui';\n";
+        entryCode = entryCode.slice(entryUiMatch[0].length);
+      }
+      // 清掉本工程上一轮遗留的注入入口文件（每轮按 taskId 写新的，无需保留旧件）
+      try {
+        var stale = files.listDir(projectDir, function (n) {
+          return n.indexOf(ENTRY_FILE_PREFIX) === 0 && /\.js$/i.test(n);
+        });
+        for (var si = 0; si < stale.length; si++) {
+          try {
+            files.remove(files.join(projectDir, stale[si]));
+          } catch (eRm) {}
+        }
+      } catch (eLs) {}
+      var injectedEntry = files.join(
+        projectDir,
+        ENTRY_FILE_PREFIX + taskId + ".js",
+      );
+      files.ensureDir(injectedEntry);
+      files.write(
+        injectedEntry,
+        entryUiDirective +
+          buildTaskPrologue(taskId, projectArgsPath) +
+          "\n" +
+          entryCode,
+      );
+      execEntryPath = injectedEntry;
+      console.log("工程已注入引导代码 → " + injectedEntry);
+    } catch (eInject) {
+      console.warn("工程引导代码注入失败，回退原样执行入口: " + eInject);
+      execEntryPath = mainPath;
+    }
+    var exec = engines.execScriptFile(execEntryPath, { path: projectDir });
     registerTaskEngine(taskId, exec);
     orbBusyInc();
   } catch (e) {
@@ -1133,6 +1302,9 @@ function start(config) {
   // 写运行标记 + 中继配置
   writeRuntime();
   writeRelayConfig();
+
+  // 清理上一会话遗留的工程注入入口文件（每轮按 taskId 重写，无需保留）
+  cleanupStaleProjectEntries();
 
   // 创建连接状态悬浮球（失败不阻断主流程，通常是悬浮窗权限未授予）
   try {

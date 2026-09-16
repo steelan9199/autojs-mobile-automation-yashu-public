@@ -133,14 +133,21 @@ AI 侧 `POST /run` 传 `path`（如 `tasks/tap-point/tap-point.js`）时，手�
 --stop / --list` 查询、终止、认领——跨会话可取）。
 
 - **taskId 链路**：中继生成（`t<月日_时分秒>_<4位随机>`）→ 随 run 指令下发 → 手机端
-  客户端在脚本头部**注入引导代码**（定义 `__TASK_ID`、`__reportProgress` 进度函数、
-  自动把回执补写 `__taskId`）→ 回执经 ws 以 `task_result`（另有 `task_started` /
-  `task_progress` / `task_alive` / `task_stopped`）按号归位。
+  客户端在脚本头部**注入引导代码**（定义 `__TASK_ID`、`__TASK_ARGS_PATH` 参数路径、
+  `__reportProgress` 进度函数，并用 `Object.defineProperty` 遮蔽 `events.broadcast`，
+  把 `autojs_result` 回执自动补写 `__taskId`；`/run` 与 `/run-project` **两条路径都已覆盖**，
+  2026-09-16 起）→ 回执经 ws 以 `task_result`（另有 `task_started` / `task_progress` /
+  `task_alive` / `task_stopped`）按号归位。
+  - 引导代码里还带 **`__spawnSub(路径[, 参数文件])`**（2026-09-16 新增）：脚本需要另起**独立引擎**
+    跑子脚本时用它，子引擎会自动带上同一任务号（读子脚本源码 → 内存拼同款引导代码 →
+    `engines.execScript(名, 源码, { path: 子脚本所在目录 })`，**不落临时文件**；子引擎里同样有
+    `__spawnSub`，孙脚本也带父任务号，真机实测）。**直接 `engines.execScriptFile` 拉起的子引擎
+    不在覆盖范围内**，其回执仍走下面的兜底归因 —— 并发子引擎时那条兜底会串号。
 - **参数文件**：按 taskId 独立写 `scripts-from-computer/data/task-args/<taskId>.json`
-  （并发权威源），并在脚本头部注入其路径为 `__TASK_ARGS_PATH`——这是**单文件模板**
-  （`/run` 路径）读参的唯一权威源，无兜底副本。⚠️ **工程模式（`/run-project`）是例外**：
-  `runProject` 用 `execScriptFile(mainPath, { path: projectDir })` **只注入 require 搜索
-  路径，不注入该变量**，工程需自行倒扫 task-args 目录取参（详见 `references/部署真实工程.md`）。
+  （并发权威源），并在脚本头部注入其路径为 `__TASK_ARGS_PATH`。**单文件模板（`/run`）与
+  工程（`/run-project`）两条路径都已注入**（2026-09-16 起工程同样注入 `__TASK_ID` /
+  `__TASK_ARGS_PATH` / `__reportProgress`，做法是把入口内联进工程目录下的临时入口
+  `__autojs-entry-<taskId>.js` 再执行，详见 `references/部署真实工程.md`）。
 - **心跳与死亡检测**：手机客户端每 10s 对运行中任务报 `task_alive`；引擎连续 2 个
   周期不在 `engines.all()` 且无回执 → 客户端直接落 `task_result` 失败（捕捉静默崩溃）。
   连接级引擎假死由中继应用层心跳判死兜底（第 6 节第 7 条）；提交后未被接单的任务单

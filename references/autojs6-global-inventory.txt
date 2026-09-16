@@ -1,0 +1,761 @@
+# AutoJS6 global inventory
+# ts=Wed Sep 16 2026 13:50:12 GMT+0800 (GMT+08:00)
+# views: this@topLevel{object}=SAME | global{object}=SAME | (function(){return this})(){object}=SAME | Function('return this')(){object}=SAME | runtime.topLevelScope{object}=SAME | engines.myEngine().scope{undefined}!=diff(false) | this.scope{undefined}!=diff(false)
+# selfRef: global.global===global:true | 4级链===global:true | this.global===this:true
+# selfTag=[object global] ctor=Object
+# counts: ownPropertyNames=650 Object.keys=560 for-in=560
+# protoTag=[object Object]
+# name	typeof	ctor
+Function	function	Function
+Object	function	Function
+Error	function	Function
+CallSite	function	Function
+decodeURI	function	Function
+decodeURIComponent	function	Function
+encodeURI	function	Function
+encodeURIComponent	function	Function
+escape	function	Function
+isFinite	function	Function
+isNaN	function	Function
+isXMLName	function	Function
+parseFloat	function	Function
+parseInt	function	Function
+unescape	function	Function
+uneval	function	Function
+eval	function	Function
+NaN	number	-
+Infinity	number	Number
+undefined	undefined	-
+globalThis	object	Object
+AggregateError	function	Function
+EvalError	function	Function
+RangeError	function	Function
+ReferenceError	function	Function
+SyntaxError	function	Function
+TypeError	function	Function
+URIError	function	Function
+InternalError	function	Function
+JavaException	function	Function
+Array	function	Function
+String	function	Function
+Boolean	function	Function
+Number	function	Function
+Date	function	Function
+Math	object	Object
+JSON	object	Object
+With	function	Function
+Call	function	Function
+Script	function	Function
+Iterator	function	Function
+StopIteration	object	Object
+RegExp	function	Function
+Continuation	function	Function
+XML	function	Function
+XMLList	function	Function
+Namespace	function	Function
+QName	function	Function
+ArrayBuffer	function	Function
+Int8Array	function	Function
+Uint8Array	function	Function
+Uint8ClampedArray	function	Function
+Int16Array	function	Function
+Uint16Array	function	Function
+Int32Array	function	Function
+Uint32Array	function	Function
+BigInt64Array	function	Function
+BigUint64Array	function	Function
+Float32Array	function	Function
+Float64Array	function	Function
+DataView	function	Function
+Symbol	function	Function
+Map	function	Function
+Promise	function	Object
+Set	function	Function
+WeakMap	function	Function
+WeakSet	function	Function
+BigInt	function	Function
+Proxy	function	Function
+Reflect	object	Object
+__GeneratorFunction	function	Function
+Packages	object	[JavaPackage constructor.name]
+getClass	function	Function
+JavaAdapter	function	Function
+JavaImporter	function	Function
+java	object	[JavaPackage java.constructor.name]
+javax	object	[JavaPackage javax.constructor.name]
+org	object	[JavaPackage org.constructor.name]
+com	object	[JavaPackage com.constructor.name]
+edu	object	[JavaPackage edu.constructor.name]
+net	object	[JavaPackage net.constructor.name]
+jp	object	[JavaPackage jp.constructor.name]
+de	object	[JavaPackage de.constructor.name]
+okhttp3	object	[JavaPackage okhttp3.constructor.name]
+androidx	object	[JavaPackage androidx.constructor.name]
+kotlin	object	[JavaPackage kotlin.constructor.name]
+ezy	object	[JavaPackage ezy.constructor.name]
+okio	object	[JavaPackage okio.constructor.name]
+io	object	[JavaPackage io.constructor.name]
+eu	object	[JavaPackage eu.constructor.name]
+android	object	[JavaPackage android.constructor.name]
+importClass	function	Function
+importPackage	function	Function
+runtime	object	-
+crash	function	-
+context	object	-
+require	function	Function
+isAutoJs6	boolean	Boolean
+toString	function	Function
+TODO	function	Function
+isUiThread	function	Function
+isJavaObject	function	Function
+isInteger	function	Function
+isBigInt	function	Function
+isPrimitive	function	Function
+isReference	function	Function
+isEmptyObject	function	Function
+unwrapJavaObject	function	Function
+toastVerbose	function	Function
+toastverbose	function	Function
+toastLog	function	Function
+toastlog	function	Function
+toastInfo	function	Function
+toastinfo	function	Function
+toastWarn	function	Function
+toastwarn	function	Function
+toastError	function	Function
+toasterror	function	Function
+sleep	function	Function
+isStopped	function	Function
+isShuttingDown	function	Function
+notStopped	function	Function
+isRunning	function	Function
+exit	function	Function
+stop	function	Function
+setClip	function	Function
+getClip	function	Function
+currentPackage	function	Function
+currentActivity	function	Function
+currentComponent	function	Function
+wait	function	Function
+waitForActivity	function	Function
+waitForPackage	function	Function
+random	function	Function
+setScreenMetrics	function	Function
+requiresApi	function	Function
+requiresAutojsVersion	function	Function
+getScaleBases	function	Function
+getScaleBaseX	function	Function
+getScaleBaseY	function	Function
+setScaleBases	function	Function
+setScaleBaseX	function	Function
+setScaleBaseY	function	Function
+cX	function	Function
+cY	function	Function
+cYx	function	Function
+cXy	function	Function
+WIDTH	number	Number
+HEIGHT	number	Number
+axios	function	-
+cheerio	object	Object
+dayjs	function	Function
+i18n	function	I18n
+isObject	function	Function
+isObjectSpecies	function	Function
+isNullish	function	Function
+util	object	Object
+$util	object	Object
+isJavaClass	function	Function
+isJavaPackage	function	Function
+species	function	Function
+$species	function	Function
+startActivity	function	Function
+startDualActivity	function	Function
+startService	function	Function
+sendEmail	function	Function
+sendBroadcast	function	Function
+sendLocalBroadcastSync	function	Function
+launch	function	Function
+launchDual	function	Function
+launchPackage	function	Function
+launchDualPackage	function	Function
+launchApp	function	Function
+launchDualApp	function	Function
+getPackageName	function	Function
+getAppName	function	Function
+launchAppDetailsSettings	function	Function
+launchSettings	function	Function
+openAppSetting	function	Function
+openAppSettings	function	Function
+launchDualAppDetailsSettings	function	Function
+launchDualSettings	function	Function
+openDualAppSetting	function	Function
+openDualAppSettings	function	Function
+isInstalled	function	Function
+isDualInstalled	function	Function
+uninstall	function	Function
+uninstallDual	function	Function
+kill	function	Function
+killDual	function	Function
+app	object	Object
+$app	object	Object
+R	object	-
+autojs	object	Object
+$autojs	object	Object
+Menu	function	Function
+Home	function	Function
+Back	function	Function
+Up	function	Function
+Down	function	Function
+Left	function	Function
+Right	function	Function
+OK	function	Function
+VolumeUp	function	Function
+VolumeDown	function	Function
+Power	function	Function
+Camera	function	Function
+Text	function	Function
+Input	function	Function
+Tap	function	Function
+Screencap	function	Function
+KeyCode	function	Function
+SetScreenMetrics	function	Function
+Swipe	function	Function
+shell	function	Function
+$shell	function	Function
+setTimeout	function	Function
+setInterval	function	Function
+setImmediate	function	Function
+clearTimeout	function	Function
+clearInterval	function	Function
+clearImmediate	function	Function
+loop	function	Function
+keepAlive	function	Function
+timers	object	Object
+$timers	object	Object
+auto	function	Function
+$auto	function	Function
+click	function	Function
+longClick	function	Function
+press	function	Function
+swipe	function	Function
+gesture	function	Function
+gestureAsync	function	Function
+gestures	function	Function
+gesturesAsync	function	Function
+scrollDown	function	Function
+scrollUp	function	Function
+input	function	Function
+setText	function	Function
+back	function	Function
+home	function	Function
+powerDialog	function	Function
+notifications	function	Function
+quickSettings	function	Function
+recents	function	Function
+splitScreen	function	Function
+automator	object	Object
+$automator	object	Object
+$r8$lambda$ecbmWyzdcN_fbKkt8VTrvf5yxsY	function	Function
+access$accessibilityFocus$jd	function	Function
+access$clearAccessibilityFocus$jd	function	Function
+access$clearFocus$jd	function	Function
+access$clearSelection$jd	function	Function
+access$click$jd	function	Function
+access$collapse$jd	function	Function
+access$contextClick$jd	function	Function
+access$copy$jd	function	Function
+access$cut$jd	function	Function
+access$dismiss$jd	function	Function
+access$dragCancel$jd	function	Function
+access$dragDrop$jd	function	Function
+access$dragStart$jd	function	Function
+access$expand$jd	function	Function
+access$focus$jd	function	Function
+access$hideTooltip$jd	function	Function
+access$imeEnter$jd	function	Function
+access$longClick$jd	function	Function
+access$moveWindow$jd	function	Function
+access$nextAtMovementGranularity$jd	function	Function
+access$nextHtmlElement$jd	function	Function
+access$pageDown$jd	function	Function
+access$pageLeft$jd	function	Function
+access$pageRight$jd	function	Function
+access$pageUp$jd	function	Function
+access$paste$jd	function	Function
+access$pressAndHold$jd	function	Function
+access$previousAtMovementGranularity$jd	function	Function
+access$previousHtmlElement$jd	function	Function
+access$scrollBackward$jd	function	Function
+access$scrollDown$jd	function	Function
+access$scrollForward$jd	function	Function
+access$scrollLeft$jd	function	Function
+access$scrollRight$jd	function	Function
+access$scrollTo$jd	function	Function
+access$scrollUp$jd	function	Function
+access$select$jd	function	Function
+access$setProgress$jd	function	Function
+access$setSelection$jd	function	Function
+access$setText$jd	function	Function
+access$show$jd	function	Function
+access$showTextSuggestions$jd	function	Function
+access$showTooltip$jd	function	Function
+accessibilityFocus	function	Function
+accessibilityFocused	function	Function
+action	function	Function
+algorithm	function	Function
+bottom	function	Function
+bounds	function	Function
+boundsBottom	function	Function
+boundsCenterX	function	Function
+boundsCenterY	function	Function
+boundsContains	function	Function
+boundsHeight	function	Function
+boundsInside	function	Function
+boundsLeft	function	Function
+boundsMaxBottom	function	Function
+boundsMaxCenterX	function	Function
+boundsMaxCenterY	function	Function
+boundsMaxHeight	function	Function
+boundsMaxLeft	function	Function
+boundsMaxRight	function	Function
+boundsMaxTop	function	Function
+boundsMaxWidth	function	Function
+boundsMinBottom	function	Function
+boundsMinCenterX	function	Function
+boundsMinCenterY	function	Function
+boundsMinHeight	function	Function
+boundsMinLeft	function	Function
+boundsMinRight	function	Function
+boundsMinTop	function	Function
+boundsMinWidth	function	Function
+boundsRight	function	Function
+boundsTop	function	Function
+boundsWidth	function	Function
+centerX	function	Function
+centerY	function	Function
+checkable	function	Function
+checked	function	Function
+childCount	function	Function
+className	function	Function
+classNameContains	function	Function
+classNameEndsWith	function	Function
+classNameMatch	function	Function
+classNameMatches	function	Function
+classNameStartsWith	function	Function
+clearAccessibilityFocus	function	Function
+clearFocus	function	Function
+clearSelection	function	Function
+clickable	function	Function
+collapse	function	Function
+column	function	Function
+columnCount	function	Function
+columnSpan	function	Function
+content	function	Function
+contentContains	function	Function
+contentEndsWith	function	Function
+contentInvalid	function	Function
+contentMatch	function	Function
+contentMatches	function	Function
+contentStartsWith	function	Function
+contextClick	function	Function
+contextClickable	function	Function
+copy	function	Function
+currentApp	function	Function
+cut	function	Function
+depth	function	Function
+desc	function	Function
+descContains	function	Function
+descEndsWith	function	Function
+descMatch	function	Function
+descMatches	function	Function
+descStartsWith	function	Function
+dismiss	function	Function
+dismissable	function	Function
+dragCancel	function	Function
+dragDrop	function	Function
+dragStart	function	Function
+drawingOrder	function	Function
+editable	function	Function
+enabled	function	Function
+exists	function	Function
+expand	function	Function
+filter	function	Function
+find	function	Function
+findAndReturnList$app_appRelease	function	Function
+findAndReturnList$app_appRelease$default	function	Function
+findOf$app_appRelease	function	Function
+findOnce	function	Function
+findOne	function	Function
+findOneOf$app_appRelease	function	Function
+focus	function	Function
+focusable	function	Function
+focused	function	Function
+getKEY	function	Function
+getSearchAlgorithm$app_appRelease	function	Function
+getSelector$app_appRelease	function	Function
+hasChildren	function	Function
+height	function	Function
+hideTooltip	function	Function
+id	function	Function
+idContains	function	Function
+idEndsWith	function	Function
+idHex	function	Function
+idMatch	function	Function
+idMatches	function	Function
+idStartsWith	function	Function
+imeEnter	function	Function
+indexInParent	function	Function
+left	function	Function
+longClickable	function	Function
+maxBottom	function	Function
+maxCenterX	function	Function
+maxCenterY	function	Function
+maxChildCount	function	Function
+maxHeight	function	Function
+maxLeft	function	Function
+maxRight	function	Function
+maxTop	function	Function
+maxWidth	function	Function
+minBottom	function	Function
+minCenterX	function	Function
+minCenterY	function	Function
+minChildCount	function	Function
+minHeight	function	Function
+minLeft	function	Function
+minRight	function	Function
+minTop	function	Function
+minWidth	function	Function
+moveWindow	function	Function
+multiLine	function	Function
+nextAtMovementGranularity	function	Function
+nextHtmlElement	function	Function
+notify	function	Function
+notifyAll	function	Function
+packageName	function	Function
+packageNameContains	function	Function
+packageNameEndsWith	function	Function
+packageNameMatch	function	Function
+packageNameMatches	function	Function
+packageNameStartsWith	function	Function
+pageDown	function	Function
+pageLeft	function	Function
+pageRight	function	Function
+pageUp	function	Function
+password	function	Function
+paste	function	Function
+performAction	function	Function
+pickup	function	Function
+pressAndHold	function	Function
+previousAtMovementGranularity	function	Function
+previousHtmlElement	function	Function
+right	function	Function
+row	function	Function
+rowCount	function	Function
+rowSpan	function	Function
+screenCenterX	function	Function
+screenCenterY	function	Function
+screenCoverage	function	Function
+scrollBackward	function	Function
+scrollForward	function	Function
+scrollLeft	function	Function
+scrollRight	function	Function
+scrollTo	function	Function
+scrollable	function	Function
+select	function	Function
+selected	function	Function
+setProgress	function	Function
+setSearchAlgorithm$app_appRelease	function	Function
+setSelection	function	Function
+setSelector$app_appRelease	function	Function
+show	function	Function
+showTextSuggestions	function	Function
+showTooltip	function	Function
+text	function	Function
+textContains	function	Function
+textEndsWith	function	Function
+textMatch	function	Function
+textMatches	function	Function
+textStartsWith	function	Function
+toStringReadable	function	Function
+top	function	Function
+untilFind	function	Function
+untilFindOne	function	Function
+visibleToUser	function	Function
+waitFor	function	Function
+width	function	Function
+detect	function	Function
+existsAll	function	Function
+existsOne	function	Function
+selector	function	Function
+$selector	function	Function
+events	object	Object
+$events	object	Object
+keys	object	Array
+$keys	object	Object
+Canvas	function	Function
+captureScreen	function	Function
+requestScreenCapture	function	Function
+requestScreenCaptureAsync	function	Function
+findColor	function	Function
+findColorInRegion	function	Function
+findColorEquals	function	Function
+findMultiColors	function	Function
+findImage	function	Function
+findImageInRegion	function	Function
+images	object	Object
+$images	object	Object
+ocr	function	Function
+$ocr	function	Function
+barcode	function	Function
+$barcode	function	Function
+qrcode	function	Function
+$qrcode	function	Function
+sync	function	Function
+threads	object	Object
+$threads	object	Object
+ui	object	-
+$ui	object	-
+colors	object	Object
+$colors	object	Object
+Color	function	Function
+tasks	object	Object
+$tasks	object	Object
+rawInput	function	Function
+prompt	function	Function
+alert	function	Function
+confirm	function	Function
+dialogs	object	Object
+$dialogs	object	Object
+continuation	object	Object
+$continuation	object	Object
+http	object	Object
+$http	object	Object
+newInjectableWebView	function	Function
+newInjectableWebClient	function	Function
+newWebSocket	function	Function
+web	object	Object
+$web	object	Object
+WebSocket	function	Function
+s13n	object	Object
+$s13n	object	Object
+cvt	object	Object
+$cvt	object	Object
+fmt	object	Object
+$fmt	object	Object
+log	function	Function
+verbose	function	Function
+warn	function	Function
+print	function	Function
+err	function	Function
+openConsole	function	Function
+showConsole	function	Function
+clearConsole	function	Function
+launchConsole	function	Function
+console	object	-
+$console	object	-
+plugins	function	Function
+$plugins	function	Function
+Arrayx	object	Object
+Numberx	object	Object
+randomInt	function	Function
+randomFloat	function	Function
+Mathx	object	Object
+jsox	function	Function
+$jsox	function	Function
+open	function	Function
+files	object	Object
+$files	object	Object
+crypto	object	Object
+$crypto	object	Object
+RootAutomator	function	Function
+engines	object	Object
+$engines	object	Object
+floaty	object	Object
+$floaty	object	Object
+storages	object	Object
+$storages	object	Object
+device	object	Object
+$device	object	Object
+recorder	function	Function
+$recorder	function	Function
+toast	function	Function
+$toast	function	Function
+media	object	Object
+$media	object	Object
+sensors	object	Object
+$sensors	object	Object
+base64	object	Object
+$base64	object	Object
+notice	function	Function
+$notice	function	Function
+shizuku	function	Function
+$shizuku	function	Function
+opencc	function	Function
+$opencc	function	Function
+mime	function	Function
+$mime	function	Function
+sysprops	function	Function
+$sysprops	function	Function
+sqlite	function	Function
+$sqlite	function	Function
+zip	function	Function
+$zip	function	Function
+nanoid	function	Function
+$nanoid	function	Function
+pinyin	function	Function
+$pinyin	function	Function
+pinyin4j	function	Function
+$pinyin4j	function	Function
+mediainfo	function	Function
+$mediainfo	function	Function
+__exitIfError__	function	Function
+__asGlobal__	function	Function
+global	object	Object
+__engine__	object	-
+ResultAdapter	function	Object
+structuredClone	function	Function
+Module	function	Function
+invPath	undefined	-
+pv	undefined	-
+ifin	undefined	-
+pn	undefined	-
+n	undefined	-
+pAbsent	undefined	-
+pFound	undefined	-
+b	undefined	-
+a	undefined	-
+inForin	undefined	-
+inOwn	undefined	-
+probeList	undefined	-
+t	string	String
+val	string	String
+name	string	String
+m	number	Number
+head	string	String
+nother	number	Number
+nu	number	Number
+nz	number	-
+no	number	Number
+nf	number	Number
+k	string	String
+forin	object	Array
+own	object	Array
+selfRef	object	Array
+same	boolean	-
+i	number	Number
+vs	object	Array
+cands	object	Array
+lines	object	Array
+g	object	Object
+result	object	Object
+__TASK_ARGS_PATH	string	String
+__TASK_ID	string	String
+__SPAWN_SRC	string	String
+__INJ	string	String
+__spawnSub	function	Function
+__reportProgress	function	Function
+tag	function	Function
+ctor	function	Function
+# typeofStats: function=518 object=97 undefined=13 null=0 other=22
+# --- probe (name / inOwnPropertyNames / inForIn / typeof) ---
+P	ui	own	object
+P	$ui	own	object
+P	sleep	own	function
+P	images	own	object
+P	app	own	object
+P	device	own	object
+P	selector	own	function
+P	continuation	own	object
+P	global	own	object
+P	runtime	own	object
+P	threads	own	object
+P	files	own	object
+P	http	own	object
+P	colors	own	object
+P	floaty	own	object
+P	dialogs	own	object
+P	console	own	object
+P	events	own	object
+P	engines	own	object
+P	activity	absent	undefined
+P	importClass	own	function
+P	importPackage	own	function
+P	importJava	absent	undefined
+P	JavaAdapter	own	function
+P	sync	own	function
+P	toast	own	function
+P	log	own	function
+P	exit	own	function
+P	random	own	function
+P	setClip	own	function
+P	getClip	own	function
+P	keys	own	object
+P	storages	own	object
+P	media	own	object
+P	sensors	own	object
+P	ocr	own	function
+P	web	own	object
+P	timers	own	object
+P	automator	own	object
+P	auto	own	function
+P	click	own	function
+P	press	own	function
+P	swipe	own	function
+P	gestures	own	function
+P	Android	absent	undefined
+P	Packages	own	object
+P	java	own	object
+P	javax	own	object
+P	org	own	object
+P	com	own	object
+P	android	own	object
+P	$id	absent	undefined
+P	$text	absent	undefined
+P	$desc	absent	undefined
+P	$type	absent	undefined
+P	$select	absent	undefined
+P	isUiThread	own	function
+P	quickSettings	own	function
+P	requiresApi	own	function
+P	requiresAutojsVersion	own	function
+P	require	own	function
+P	module	absent	undefined
+P	exports	absent	undefined
+P	typeof	absent	undefined
+P	undefined	own	undefined
+P	NaN	own	number
+P	Infinity	own	number
+P	arguments	absent	undefined
+P	eval	own	function
+P	JSON	own	object
+P	Object	own	function
+P	Function	own	function
+P	Math	own	object
+P	Date	own	function
+P	Array	own	function
+P	String	own	function
+P	Number	own	function
+P	Boolean	own	function
+P	parseInt	own	function
+P	parseFloat	own	function
+P	setTimeout	own	function
+P	setInterval	own	function
+P	clearTimeout	own	function
+P	clearInterval	own	function
+P	Promise	own	function
+P	Symbol	own	function
+P	Proxy	own	function
+P	Reflect	own	object
+P	Map	own	function
+P	Set	own	function
+P	WeakMap	own	function
+P	Error	own	function
+P	RegExp	own	function
+P	imports	absent	undefined
+P	Packages	own	object
+P	scope	absent	undefined
+P	context	own	object
+P	execute	absent	undefined
+P	enumerate	absent	undefined
+P	ArrayBuffer	own	function
+# probeFound=84 absent=activity,importJava,Android,$id,$text,$desc,$type,$select,module,exports,typeof,arguments,imports,scope,execute,enumerate

@@ -28,7 +28,7 @@ args: { "left": "number*", "top": "number*", "right": "number*", "bottom": "numb
 - 缺任一必填：`{ok:0, err:"缺少参数 left/top/right/bottom（必须是数字）"}`。
 - 截图权限未授予：`captureScreen` 返回空 → `{ok:0, err:"captureScreen 返回空"}`。
 - 上传目标未知（手机端未运行常驻客户端）：`{ok:0, err:"未找到中继配置 ..."}`。
-- 成功回执带回电脑本地绝对路径：`{ok:1, path:"<PC路径>", size:N, name:"xxx.png"}`，AI 用 Read 读该 PNG 即可；**此外必须把该 PNG 通过 `present_files` 展示给用户（至少把绝对路径写进回复），不能只回执就结束**（见 SKILL.md 第 3 步「截图结果必须展示给用户」硬规则）。
+- 成功回执带回电脑本地绝对路径：`{ok:1, path:"<PC路径>", size:N, name:"xxx.png"}`，AI 用 Read 读该 PNG 即可；**此外必须把该 PNG 通过 `present_files` 展示给用户（至少把绝对路径写进回复），不能只回执就结束**（见 SKILL.md 硬约束 4「结果交付」）。
 
 ## 示例调用
 ```bash

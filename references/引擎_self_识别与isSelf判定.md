@@ -79,6 +79,22 @@ function safeId(eng) {
 | 单脚本（任务模板） | `8`/`13`/`14` | `/storage/emulated/0/脚本/scripts-from-computer/single/<模板名>.js` | `.../client` | `JavaScriptFileSource` |
 | 工程（project） | **`11` 与 `12`（同 source）** | `/storage/emulated/0/脚本/scripts-from-computer/project/probe-proj/main.js` | **`.../project/probe-proj`（工程目录）** | `JavaScriptFileSource` |
 | 字符串脚本（execScript） | `15` | `$engine/字符串常驻探针.js` | `.../client` | `StringScriptSource` |
+| 子引擎（`__spawnSub` = execScript + 显式 `config.path`） | 自增 | `$engine/<子脚本名>.js` | **子脚本所在目录** | `StringScriptSource` |
+
+> ⚠️ **2026-09-16 起：工程场景的 `source` 不再是 `main.js`。** `runProject` 会把工程入口源码内联进
+> 工程目录下的**临时入口** `__autojs-entry-<taskId>.js` 再执行（用于注入 `__TASK_ID` /
+> `__TASK_ARGS_PATH` 并让工程回执自动带上 `__taskId`）。真机实测：`source` =
+> `.../scripts-from-computer/project/<工程名>/__autojs-entry-<taskId>.js`，`cwd` 仍是工程目录。
+> **用 `source` 认引擎时别只认 `main.js`**（写按 source 过滤的脚本时要兼容这个前缀）。
+> `isClient` 判定不受影响：它只认 `autojs-task-phone-client.js` 基名、`/scripts-from-computer/client/`
+> 路径、以及「相对 `main.js` + APK 私有目录 `/data/.../files/project`」三种结构特征。
+>
+> ⚠️ **2026-09-16 起另有 `__spawnSub` 拉起的子引擎**（见表格末行，真机实测）：`source` 形如
+> `$engine/<子脚本名>.js` —— **没有真实文件路径**（源码是内存字符串传进去的），`cwd` =
+> **子脚本所在目录**（因为显式传了 `config.path`，这也解释了它与上一行"字符串脚本 cwd=客户端目录"
+> 的差异：那次的样本没传 path）。用 `source` 认引擎或做过滤时，要预料到 `$engine/` 前缀这一类；
+> `isClient` 判定不受影响（它不是客户端）。`__spawnSub` 是「子脚本自动带父任务号」的推荐通道，
+> 语义见《部署真实工程.md》规范 5。
 
 由此得到的五条硬结论：
 

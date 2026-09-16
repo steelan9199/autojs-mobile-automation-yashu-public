@@ -11,7 +11,10 @@
 //     落盘到手机 scripts-from-computer/project/<name>/ 下（PC 下发产物隔离区，与用户手写脚本隔离），严格保持 PC 上的相对目录结构；
 //   - 图片/音频等二进制资源作为普通文件原样下发（二进制安全、按字节数校验），手机按相对路径
 //     直接读取，无需 base64 内联——这是选"部署真实工程"而非"打包单文件"的关键原因；
-//   - 部署完成后（默认）触发 /run-project 运行工程入口 main.js（原生 require + 资源读取直接可用）。
+//   - 部署完成后（默认）触发 /run-project 运行工程入口 main（原生 require + 资源读取直接可用）。
+//     注：手机端不会直接跑 main.js，而是把入口源码内联进工程目录下的临时入口
+//     `__autojs-entry-<taskId>.js` 再执行（为注入 __TASK_ID/__TASK_ARGS_PATH 并让回执带 tag），
+//     详见 references/部署真实工程.md 规范 4。
 //
 // 配置: 默认连 http://localhost:9421；可用环境变量覆盖（同 pc-to-phone.js）：
 //   RELAY_URL / RELAY_HEALTH_URL / RELAY_PC_FILE_DIR，以及 RELAY_RUN_PROJECT_URL。

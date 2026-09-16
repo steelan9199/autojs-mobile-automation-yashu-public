@@ -1,0 +1,5 @@
+{
+  "name": "repro-require2",
+  "main": "main.js",
+  "ignore": ["node_modules", "*.log"]
+}

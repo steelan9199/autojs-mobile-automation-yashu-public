@@ -9,10 +9,11 @@
 //
 // 下发方式（三选一）：
 //   1) 按模板名（推荐，最省路径、无需 cd）：
-//        node scripts/run-task.js open_app --args '{"name":"MT管理器"}'
-//        → 自动解析为 tasks/open_app/open_app.js，下发给手机按名下载执行。
+//        node scripts/run-task.js open-app --args '{"name":"MT管理器"}'
+//        → 自动解析为 tasks/open-app/open-app.js，下发给手机按名下载执行。
+//        注意：模板名一律小写中划线（kebab-case），写 open_app 会找不到而失败。
 //   2) 按名下载（显式相对路径，模板只存 PC 一份、始终最新）：
-//        node scripts/run-task.js --path tasks/tap_text/tap_text.js --args '{"text":"确定"}'
+//        node scripts/run-task.js --path tasks/tap-text/tap-text.js --args '{"text":"确定"}'
 //   3) 直接发内容（适合 AI 现场写的一次性脚本）：
 //        node scripts/run-task.js temp/my-script.js --args '{"text":"你好"}'
 //
@@ -39,7 +40,7 @@ const POLL_INTERVAL_MS = 1000;
 
 // 文本结果预算：超过该字符数的任务回执不整段进 AI 上下文——全文落盘
 // scripts/task-results/<taskId>.txt，CLI 只回「预览 + 落盘路径」；AI 按需
-// grep/按行提取（意图不明时按 SKILL.md「超限处置」反向提问用户）。
+// grep/按行提取（意图不明时按 `references/执行手册.md`「第 2 步」反向提问用户）。
 const RESULT_CHAR_BUDGET = 2000;
 const RESULT_PREVIEW_CHARS = 400;
 const MAX_RESULT_FILES = 30; // task-results 目录只保留最近 30 个落盘文件
@@ -51,8 +52,12 @@ const TASK_RESULTS_DIR = path.join(SCRIPTS_DIR, "task-results");
 
 // 模板名 → 手机端按名下载用的相对路径（不含 scripts/ 前缀，
 // 与中继 /probe/ 的基准目录一致：tasks/<name>/<name>.js）。
+//
+// 必须强制 posix 分隔：path.join 在 Windows 上会产出 `tasks\a\a.js`，而手机端是
+// Linux 路径语义；SKILL.md 硬约束 2 要求路径一律用正斜杠——反斜杠会让旧版客户端
+// 按名下载失败、落盘文件名出错。故这里不用 path.join。
 function templateToPhonePath(name) {
-  return path.join("tasks", name, name + ".js");
+  return ["tasks", name, name + ".js"].join("/");
 }
 
 // 像路径的参数？含斜杠、反斜杠或 .js 后缀即视为本地脚本文件；
@@ -163,6 +168,42 @@ async function pruneOldResults() {
   } catch {
     /* 目录不存在或清理失败则忽略 */
   }
+}
+
+/**
+ * 并发护栏（可观测，不阻断）。
+ *
+ * 背景：中继 /run 已任务单化，**不检查在途槽位、不会返回 429**（429 只覆盖
+ * /screenshot、/update-client、/delete-project 三个同步接口）。也就是说：
+ * 并发下发两个任务会双双 accepted，UI/屏幕操作类会互相踩踏、并可能回执串号。
+ *
+ * 为什么只告警不阻断：只读短任务（get-screen-size / get-device-info / get-file-size
+ * 等）并发是安全且能提速的，一刀切互斥会误伤；而「在途任务永不终态」若真的发生，
+ * 阻断式护栏会把整个通道卡死——稳定优先于最优，所以选可观测而非硬拦。
+ *
+ * 调用方（AI）看到本告警即应等前序任务终态再下发；确认安全可加 --allow-parallel。
+ */
+async function warnIfBusy(serverBase, allowParallel) {
+  if (allowParallel) return;
+  let r;
+  try {
+    r = await getJson(serverBase + "/task-list?limit=20");
+  } catch {
+    return; // 探测失败绝不影响正常下发
+  }
+  const busy = ((r.data && r.data.tasks) || []).filter(
+    (t) => t && !isTerminal(t.status)
+  );
+  if (busy.length === 0) return;
+  const head = busy
+    .slice(0, 3)
+    .map((t) => `${t.taskId}(${t.name || "?"},${t.status})`)
+    .join("、");
+  process.stderr.write(
+    `[并发告警] 还有 ${busy.length} 个未终态任务在跑：${head}。` +
+      `屏幕/UI 类并发会互相踩踏并可能回执串号，请等它终态再下发；` +
+      `确认安全可加 --allow-parallel 静默本提示。\n`
+  );
 }
 
 // 回执超预算 → 全文落盘、载荷原地替换为「预览 + 落盘路径」。返回处理后的载荷。
@@ -285,6 +326,7 @@ async function main() {
   let stopId = null;
   let listMode = false;
   let listLimit = 20;
+  let allowParallel = false;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -305,6 +347,7 @@ async function main() {
       // 可选跟一个数量参数
       if (argv[i + 1] && /^\d+$/.test(argv[i + 1])) listLimit = Number(argv[++i]);
     } else if (a === "--dry-run") dryRun = true;
+    else if (a === "--allow-parallel") allowParallel = true;
     else if (a.startsWith("http://") || a.startsWith("https://")) base = a;
     else if (localFile || phonePath) {
       // 裸参数只允许一个（模板名或脚本文件），多余的就地报错——
@@ -397,7 +440,8 @@ async function main() {
         "  run-task.js --path tasks/<模板>.js --args '{\"k\":\"v\"}'\n" +
         "  run-task.js --name <模板名> --args '{\"k\":\"v\"}'\n" +
         "  run-task.js <本地脚本文件> --args '{\"k\":\"v\"}'\n" +
-        "  run-task.js --status <taskId> | --stop <taskId> | --list [数量]\n"
+        "  run-task.js --status <taskId> | --stop <taskId> | --list [数量]\n" +
+        "  [--allow-parallel] 静默「有任务在途」的并发告警（确认安全才加）\n"
     );
     quit(1);
   }
@@ -406,6 +450,9 @@ async function main() {
     process.stdout.write(JSON.stringify(body, null, 2) + "\n");
     return;
   }
+
+  // 下发前的并发探测：/run 不拦并发，这里补一层可观测告警（不阻断）
+  await warnIfBusy(serverBase, allowParallel);
 
   try {
     await submitAndWait(serverBase, body, waitSec);

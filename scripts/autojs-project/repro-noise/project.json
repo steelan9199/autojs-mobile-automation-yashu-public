@@ -1,0 +1,5 @@
+{
+  "name": "repro-noise",
+  "main": "main.js",
+  "ignore": ["node_modules", "*.log"]
+}

@@ -12,7 +12,7 @@
       "name": "⬇️ Pull from GitHub",
       "type": "node-terminal",
       "request": "launch",
-      "command": "git pull --ff-only origin main",
+      "command": "git pull --ff-only origin main; exit $LASTEXITCODE",
       "cwd": "${workspaceFolder}"
     }
   ]

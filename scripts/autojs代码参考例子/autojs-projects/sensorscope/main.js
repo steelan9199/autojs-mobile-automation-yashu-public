@@ -51,8 +51,9 @@ events.on("exit", function () {
     if (typeof state !== "undefined" && state) state.stopped = true;
     if (typeof src !== "undefined" && src) src.stop();
   } catch (e) {}
-  // 只在"还没回过执"时兜底上报。工程态没有客户端注入的 __taskId 包装，
-  // 无条件重播会和别的任务单（比如 stop-script-by-id）的回执串台。
+  // 只在"还没回过执"时兜底上报，避免同一任务重复回执。
+  // （工程模式自 2026-09-16 起同样会被注入 prologue，回执自动补 __taskId；
+  //   这道守卫仍保留，防止 exit 兜底重播撞上别的任务单的窗口。）
   if (!reported) sendResult(result);
 });
 

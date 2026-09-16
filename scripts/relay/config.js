@@ -120,7 +120,7 @@ export const MAX_PC_UPLOAD_FILES = 30;
 
 /**
  * 电脑端"AI 现场一次性脚本库"目录（<skill_dir>/temp/）：
- * AI 临时写的一次性脚本默认落这里（见 run-task.js 用法示例、SKILL.md「现场脚本规范」）。
+ * AI 临时写的一次性脚本默认落这里（见 run-task.js 用法示例、`references/现场脚本规范.md`）。
  * 历史版本不自动清理、靠人工管理；现加上数量上限，按修改时间只保留最新 30 个文件（不限扩展名）。
  * 可用 RELAY_TEMP_DIR 覆盖（如换盘/调试时）。
  */

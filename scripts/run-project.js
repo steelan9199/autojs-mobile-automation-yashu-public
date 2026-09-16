@@ -4,7 +4,9 @@
 // 用法:
 //   node scripts/run-project.js <工程名> [--main <入口.js>] [--args '<json>'] [--wait 秒]
 //
-// 仅向中继 /run-project 发指令，触发手机端已存在的工程入口 main.js。
+// 仅向中继 /run-project 发指令，触发手机端已存在的工程入口 main。
+// 注：手机端实际执行的是工程目录下的临时入口 `__autojs-entry-<taskId>.js`
+//（入口源码内联 + 注入 __TASK_ID/__TASK_ARGS_PATH/__reportProgress），见 部署真实工程.md 规范 4。
 // 任务单模型：/run-project 立即返回 taskId；本工具默认轮询任务单最多 30 秒等回执
 // （短工程体验与旧版一致，输出 {"ok":1,"result":{...}} 兼容旧形状）；长工程用
 // --wait 0 立即返回 taskId，之后用 `run-task.js --status <taskId>` 查询/`--stop` 终止。

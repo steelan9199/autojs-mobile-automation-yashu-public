@@ -58,6 +58,19 @@ netstat -ano | grep 9421     # 有 LISTENING 行 = 端口在监听
    - 没有 → 服务没绑定成功/进程已退出，重启；
    - 有 → 中继在听，问题在网络/防火墙，按 `手机连接排障.md` 排查。
 
+### 3.1 变体症状：`phone:connected` 但指令发不过去（客户端假死）
+
+症状：`curl health` 返回 `phone:connected`（中继认为手机在线），但下发任务后 `curl "…/task/<taskId>"`（或 `run-task.js --status`）**`startedAt` 恒为空**、`status` 一直停在 `submitted`，最终超时。
+
+判别：
+
+1. 先别怀疑代码——这是**手机端客户端引擎假死**（WS socket 还在，但托管它的引擎已不再处理指令，常见于媒体/图像操作后引擎残留），中继侧看不出异常；
+2. 处置：**在手机 AutoJs6 里手动重跑一次 `autojs-task-phone-client.js` 清状态**，之后恢复；
+3. 恢复后先跑 `node scripts/update-phone-client.js` 把手机端升到最新版（假死状态下该指令同样发不过去，所以顺序不能反）；
+4. 中继侧**无需重启**（`/health` 自始至终是 ok）。
+
+判据分层：`phone:disconnected` = 手机没连（走第 1、2 步 + `手机连接排障.md`）；`phone:connected` + 指令不通 = 手机连了但不干活（走本节）。**两者处置完全不同，别混。**
+
 判据要点：
 
 - 手机 `SocketTimeoutException`（超时，而非 Connection refused）通常是**对端无进程监听 + 系统防火墙默认丢弃入站 SYN**叠加的结果；而用户手动重启服务后手机能连上，恰恰证明客户端重连看门狗、网络、防火墙都没问题，唯一变量是「服务当时没在跑」。

@@ -10,7 +10,7 @@
   - `modules/` 业务模块，内部互相 `require('./x')`
   - `assets/` 图片/音频等资源，原样下发
   - `project.json` 可选，name=工程名、main="main.js"、ignore=[...]
-- **一次性、单文件的临时脚本不要放这里**，写到 `<skill_dir>/temp/` 目录（见 SKILL.md「现场脚本规范」）。
+- **一次性、单文件的临时脚本不要放这里**，写到 `<skill_dir>/temp/` 目录（见 `references/现场脚本规范.md`）。
 
 ## 部署到手机
 
@@ -25,4 +25,4 @@ cd <skill_dir> && \
 node scripts/deploy-project.js scripts/autojs-project/<工程名> --zip
 ```
 
-> 工程编码硬约束（ES5 / var only、入口回执、相对 require 由运行侧注入）详见 SKILL.md「工程代码编写规范」。
+> 工程编码硬约束（ES5 / var only、入口回执、相对 require 由运行侧注入）详见 `references/部署真实工程.md`。

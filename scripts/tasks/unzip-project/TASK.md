@@ -1,6 +1,7 @@
 ---
 name: unzip-project
 description: "[内部] 解压工程 zip 到手机目录（deploy_project --zip 自动调用，普通任务请勿手动选用）"
+args: { "zipPath": "string*", "targetDir": "string", "keepZip": "boolean" }
 ---
 
 # unzip-project（内部模板）

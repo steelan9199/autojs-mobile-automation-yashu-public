@@ -1,7 +1,17 @@
 ---
 name: AI_AutoJS编码强制规范
-description: 编写 AutoJS(AutoJs6/Rhino) 手机端 JS 脚本必须遵守的底层编码规则——严格 ES5(var only)、UI 线程禁止 sleep/耗时、耗时 API 必须 threads.start 多线程、颜色字面量 int 溢出等。写任何手机端 JS 前必读。
+description: 编写 AutoJS(AutoJs6/Rhino) 手机端 JS 脚本必须遵守的底层编码规则核心篇——严格 ES5(var only)、UI 线程禁止 sleep/耗时、耗时 API 必须 threads.start 多线程、UI 模式首行指令、回执规范、编码前自检清单。写任何手机端 JS 前必读本文件；细则见同目录 AI_AutoJS_编码细则.md。
 ---
+
+# AutoJS 代码编写强制规范（AI 必读 · 核心篇）
+
+> **写或改任何手机端 JS 之前只读本文件**（约 6KB），它含：默认脚本目录、三条铁律、ES5 边界、循环与数组、
+> UI 模式首行指令、主线程禁止清单、子线程、回执规范、编码前自检清单 —— 覆盖绝大多数正确性要求。
+>
+> **细则另见 `AI_AutoJS_编码细则.md`**（约 14KB），只在**命中具体报错 / 做悬浮窗与 ui 交互 / 查静默崩溃**时按需读那一段，
+> 不必通读：1.3 数字溢出 · 1.5 渐变着色器 · 1.6 canvas 每帧清屏 · 1.7 顶层变量名 R/L · 1.7.1 files 缺方法 ·
+> 2.1 UI 主线程定义 · 2.3.1 `__spawnSub` 独立引擎 · 2.4 `ui.run`/`ui.post` · 2.4.1 悬浮窗主线程 ·
+> 2.5 子线程异常不冒泡 · 2.6 可运行样例 · 3.1 静默崩溃定位手法 · 4 其他高频坑 · 6 构造 java 类型。
 
 # AutoJS 代码编写强制规范（AI 必读）
 
@@ -45,130 +55,12 @@ AutoJs6 的 Rhino 引擎**实测支持部分 ES6 语法**（已验证：`?.` 可
 - 禁止凭主观判断引入未经验证的 ES6——用户群设备与 AutoJs6 版本参差，你的机型支持不代表别人的支持；
 - 已获用户实测放行的特性清单：`?.` 可选链、`textMatch()`（正则字面量）。
 
-### 1.3 数字字面量与颜色 `int` 溢出（高频炸点）
-
-Java 的 `int` 是**有符号 32 位**（范围 -2,147,483,648 ~ 2,147,483,647）。
-JS 里直接写的色值字面量会变成**无符号**大数，**超过上限就塞不进 `int[]` / `int` 参数，绘制/建数组时直接崩**：
-
-```js
-// ❌ 致命：0xFFFFFFFF = 4294967295，超过 Java int 上限，建 int[] 或当颜色传入即崩
-var colorsArr = util.java.array("int", 2);
-colorsArr[0] = 0xffffffff; // 抛异常
-paint.setColor(0xff000000); // 同理危险
-
-// ✅ 正确：一律走官方取色函数，返回的是合法 Java int
-var white = colors.WHITE; // -1
-var black = colors.BLACK; // -16777216
-var c = colors.rgb(255, 0, 0); // 红
-var a = colors.argb(255, 255, 0, 0); // 带 alpha 的红
-```
-
-> 凡是「颜色」相关：用 `colors.WHITE / colors.BLACK / colors.rgb() / colors.argb()`，
-> 不要用 `0xRRGGBB` / `0xAARRGGBB` 字面量去喂原生绘图 API（`Paint.setColor` / `SweepGradient` / `RadialGradient` / `int[]`）。
-
 ### 1.4 循环与数组
 
 - 用传统 `for (var i = 0; i < n; i++) {}`，不用 `for...of` / `forEach` 链式（避免 `this` 与兼容问题）。
 - 如果要建 Java 原生数组， 用 `util.java.array("int", N)` / `util.java.array("float", N)`，不要 `new Array(N)`（那是 JS 数组，喂给 native API 会类型错）。
 
 ---
-
-### 1.5 渐变着色器 `RadialGradient` / `SweepGradient` / `ComposeShader` 的 `Invalid ID, must be in the range [0..16)` 陷阱（高频炸点）
-
-#### 现象
-
-构造着色器这一行直接抛：
-
-```
-Wrapped java.lang.IllegalArgumentException: Invalid ID, must be in the range [0..16)
-    at .../wheel.js#<行号>
-```
-
-发生在 `new RadialGradient(...)` / `new SweepGradient(...)` / `new ComposeShader(...)` 那一行。
-
-> 这是颜色写法的「升级版」坑：1.3 是字面量塞不进 `int[]`；这里是**合法颜色值**也会崩，因为 Rhino 选错了重载。
-
-#### 为什么发生（根因：long 颜色构造 + ColorSpace ID 校验）
-
-1. `colors.argb(a, r, g, b)` 返回的是 Java `int`。当 `a = 255` 时结果高位是 1，于是它是个**负数**（例如灰 `0xFF808080` 作为有符号 int = `-2139062144`）。
-2. Android（API 29+）的 `RadialGradient` 同时提供了两个构造：
-   - `(float, float, float, int, int, TileMode)` —— **旧版**：吃 `int` 颜色，无 ColorSpace 校验；
-   - `(float, float, float, long, long, TileMode)` —— **新版**：`long` 是 `Color` 打包格式，高比特存放 **ColorSpace ID**。
-3. Rhino 在做重载决议时，可能把 `centerCol/edgeCol`（负的 `int`）匹配到 **`long` 颜色构造**。负的 `int` 被**符号扩展**成 `long`（高 32 位全 1），高比特被当成 ColorSpace ID → 越界。
-4. **`[0..16)` 这个范围就是铁证**：Android 的 `ColorSpace.Named` 正好 **16** 个，合法 ColorSpace ID 必在 `[0..16)`。它**不是** `TileMode`（3~4 个）也不是 `PorterDuff.Mode`（~29 个）的序号越界——报 `[0..16)` 一定指向 ColorSpace，即 long 颜色构造被误用。
-
-#### 怎么解决（强制走 int 颜色路径）
-
-**一律用 `int[]` 多色构造**，它吃传统 ARGB `int`、完全不做 ColorSpace 校验：
-
-```js
-// ❌ 危险：两色 int 直传，Rhino 易匹配到 long 颜色构造 → Invalid ID [0..16)
-var radial = new RadialGradient(0, 0, R, centerCol, edgeCol, CLAMP);
-
-// ✅ 正确：int[] 多色构造 + & 0xffffffff 保证干净的 32 位 ARGB
-var cols = util.java.array("int", 2);
-cols[0] = (centerCol & 0xffffffff); // 圆心色（如当前 L 的灰）
-cols[1] = (edgeCol & 0xffffffff);   // 边缘色（如白）
-var stops = util.java.array("float", 2);
-stops[0] = 0.0;
-stops[1] = 1.0;
-var radial = new RadialGradient(0, 0, R, cols, stops, CLAMP);
-```
-
-> `& 0xffffffff` 是双保险：无论 `colors.argb` 返回 Java `int` 还是被 Rhino 当成了 JS `number`，都抹掉高 32 位、只留干净的 ARGB，再塞进 `int[]` 绝不会越界。
-
-`SweepGradient`、`ComposeShader` 同理——颜色一律走 `int[]`，**不要**直接把单个 `int`/`long` 颜色值喂给带 `long` 重载的构造。
-
-#### 伴随坑：嵌套枚举 `TileMode` / `PorterDuff.Mode` 拿到错误对象
-
-同一段渐变代码里通常还要传 `TileMode` 和 `PorterDuff.Mode`。在 AutoJS6(Rhino) 里：
-
-- `Shader.TileMode.CLAMP` / `PorterDuff.Mode.MULTIPLY`（嵌套枚举字段访问）常拿到**错误对象**；
-- 连 `Shader.TileMode.valueOf("CLAMP")` 这种仍依赖字段访问的写法也不可靠。
-
-**正确取法**（用 `Class.forName` + `java.lang.Enum.valueOf` 拿真实枚举实例，绕过 Rhino 嵌套枚举解析缺陷）：
-
-```js
-var TileModeClass = java.lang.Class.forName("android.graphics.Shader$TileMode");
-var CLAMP = java.lang.Enum.valueOf(TileModeClass, "CLAMP");
-var ModeClass = java.lang.Class.forName("android.graphics.PorterDuff$Mode");
-var MULTIPLY = java.lang.Enum.valueOf(ModeClass, "MULTIPLY");
-```
-
-> **判据**：报错是 `Invalid ID, must be in the range [0..16)` → 一定是上面的**颜色 long 构造**问题（优先修这个）；报错是别的 ordinal / 类型错 → 先查**枚举取值**这条。两者常在同一段代码里同时出现，建议一次改干净。
-
----
-
-### 1.6 悬浮窗 canvas draw 回调每帧首行必须清屏（画面呈现滞后/冻结，高频炸点）
-
-floaty 悬浮窗的 canvas 是在**持久缓冲**上绘制的。`on("draw")` 回调里若不做清屏，会出现
-极具迷惑性的"呈现滞后/冻结"：draw 回调照常以 ~30fps 执行、同窗口的 TextView 正常刷新，
-但屏幕上的 canvas 画面停在旧帧（几秒~几十秒才偶尔跳一帧，甚至长期不动）——
-表现为"数量文本更新了，画的圆圈不动"。
-
-修复（每帧首行显式清屏，ColorWheel 色轮同款写法，2026-09-06 用户真机实测确认）：
-
-```js
-cv.on("draw", function (canvas) {
-  canvas.drawColor(colors.argb(0, 0, 0, 0), PorterDuff.Mode.CLEAR); // 每帧首行清屏，必须
-  // ... 正常绘制 ...
-});
-```
-
-注意：
-- 嵌套枚举 `PorterDuff.Mode.CLEAR` 若字段访问拿到错误对象，用 `Class.forName +
-  Enum.valueOf` 取真实实例（见 §1.5 伴随坑）；
-- 排查此类问题用"最小回路 + 逐级传感器"（赋值计数/draw 计数/屏上内容三级各装一个
-  传感器），不要在大段业务代码里猜；顺带排除项：WindowManager flags 反射、
-  setPosition 戳窗口、invalidate/postInvalidate 对此症均无效；
-- 悬浮窗坐标原点在状态栏下方，与截屏坐标的高差用 `view.getLocationOnScreen` 动态补偿；
-- **绝不能对 canvas `setVisibility(GONE)`**：GONE→VISIBLE 后呈现通道**永久死亡**
-  （draw 照跑、屏幕永远旧帧/空帧，2026-09-06 v10 实测）。需要"藏起"canvas 时用
-  INVISIBLE（安全），或只 GONE 兄弟视图、保持 canvas VISIBLE；
-- `getLocationOnScreen` 的偏移**每帧重算**，不要缓存——窗口尺寸/位置变化（收起/恢复）
-  后缓存值会撞上布局竞态，把内容画飞；
-- 所有 UI 回调（draw/定时器/触摸/滑块）体内**必须 try-catch**：回调中的未捕获异常会
-  杀死整个脚本引擎，悬浮窗直接消失。
 
 ## 2. UI 脚本专项：主线程禁止耗时 / 延迟（最关键）
 
@@ -214,13 +106,6 @@ files.write(path, L.join("\n"));
 var exec = engines.execScriptFile(path);
 ```
 
-### 2.1 什么是"UI 主线程"
-
-`ui.layout(...)` 之后，从布局、到 `view.on("click", ...)`、`canvas.on("draw", ...)` 等所有事件回调，
-**全部跑在 UI 线程（也叫主线程）上**。这个线程还负责「让界面动起来、响应点按、刷新画面」。
-
-**UI 线程一旦被阻塞，整个界面就冻结， 甚至手机黑屏， autojs闪退**：点不动、按钮失灵、`exit()` 也关不掉，用户只能去 AutoJs6 里手动停止。
-
 ### 2.2 主线程【禁止】清单
 
 以下代码**绝对不能**直接写在 UI 线程 / UI 事件回调里：
@@ -258,48 +143,6 @@ threads.start(function () {
 > 小提示：`ui.layout()` 之后虽然主线程不退出，但**主线程本身不能干重活**。
 > 真正"挂住"界面的是 `ui.layout` 后的事件循环，不是 `sleep` 之类。
 
-### 2.4 子线程改 UI 必须切回 UI 线程
-
-子线程拿到的数据要更新界面，**不许**直接在子线程里 `ui.xxx.setText(...)`，必须包一层：
-
-```js
-// 两种切回 UI 线程的写法，二选一
-ui.run(function () {
-  ui.textViewResult.setText("ok");
-});
-ui.post(function () {
-  ui.textViewResult.setText("ok");
-});
-```
-
-反向也成立：**`threads.start` 外的代码默认就在 UI 线程**，普通计算/逻辑放心写，只有"耗时三件套"（网络 / 大 I/O / 密集循环）才需要搬进子线程。
-
-### 2.5 子线程异常不冒泡
-
-`threads.start(function () { ... })` 里的异常**不会**被外面的 `try/catch` 抓到，
-也不会触发主线程的 `events.on("exit")`。子线程内部必须**自己** `try/catch` 并报错：
-
-```js
-threads.start(function () {
-  try {
-    doHeavyWork();
-  } catch (e) {
-    // 子线程错误自己处理：要么切回 UI 提示，要么 broadcast 回执
-    events.broadcast.emit(
-      "autojs_result",
-      JSON.stringify({ ok: 0, err: "子线程: " + e }),
-    );
-  }
-});
-```
-
-### 2.6 可运行样例（对照学习）
-
-- `autojs代码参考例子/autojs-projects/ColorWheel/`：UI 主线程只做 `ui.layout` + 事件绑定 + canvas 绘制回调（绘制是 GPU 级轻量活，不 sleep 不网络）；点击取色在回调里即时算出 `#HEX`，无耗时阻塞——规范的"UI 线程该长什么样"范例。
-- 凡是「点按钮 → 去网络取数据 → 回显」的 UI，必套 2.3 + 2.4 的 `threads.start` + `ui.run` 骨架。
-
----
-
 ## 3. 回执规范（建好即回执，简引）
 
 > 完整规则与代码骨架见 references/现场脚本规范.md 的「建好即回执」段，此处只提示要点：
@@ -307,18 +150,6 @@ threads.start(function () {
 - **会自己跑完结束**的任务（点按钮、截图等）：标准 `events.on("exit", ...)` 回执即可。
 - **UI / 常驻类**（窗口不关就不 exit）：`ui.layout()` 成功后**立即同步** `sendResult`，`events.on("exit")` 仅作兜底。
 - 回执极简：`{ok:1}` 或 `{ok:0, err:"原因"}`，不要回传大段文本 / 整棵 UI 树。
-
----
-
-## 4. 其他高频坑（顺手记）
-
-- **截图权限前置**：凡 `captureScreen()` / `ocr()`，脚本最前必须有
-  「后台线程自动点『立即开始』+ `requestScreenCapture()` + `sleep(500)`」前置代码，否则截屏失败 / 卡死（表现为回执为空）。模板 `screenshot` / `crop-screenshot` / `ocr` 已内置，新建照 `references/截图权限与弹框处理.md` 加。
-- **参数不写死**：从任务单注入的 `__TASK_ARGS_PATH` 读（`JSON.parse(files.read(...))`）；不要硬编码坐标 / 文本。
-- **勿 setInterval 保活**：经 `/run` 下发的现场脚本正常 `exit` 即可；只有常驻客户端才用 `setInterval` 保活心跳。
-- **一次一个 UI 任务**：run 类任务单可并发落单（回执按 taskId 归位），但手机屏幕同一时刻只能做一件事，UI 自动化任务仍逐步串行下发、切勿并发；截屏/更新客户端/删工程等同步短操作在中继侧互斥（并发返回 429）。
-
----
 
 ## 5. 编码前自检清单（逐条勾）
 
@@ -337,39 +168,26 @@ threads.start(function () {
 - [ ] 有耗时则已用 `threads.start` 包裹，且改 UI 用 `ui.run` / `ui.post` 切回；
 - [ ] 子线程内部有独立 `try/catch`；
 - [ ] 回执正确：UI/常驻类已「建好即回执」，`events.on("exit")` 作兜底；
+- [ ] **顶层变量名未使用 `R` / `L`**（AutoJS6 内置全局名，赋值静默失败 → 直接导致无回执崩溃）；
+- [ ] 文件大小 / 修改时间用 `java.io.File.length()` / `.lastModified()`，**未**用不存在的 `files.getLength` / `files.getLastModified` / `files.size`；
 - [ ] 截图类脚本已内置权限前置代码；
 - [ ] 参数从注入的 `__TASK_ARGS_PATH` 读取，未写死。
 
 > 任一勾选项不达标，下发前必须改。宁可多花 1 分钟自查，省下 30 分钟排"为什么没回执"。
 
-## 6. 构造java类型数据
+## 细则速查（症状 → 去 `AI_AutoJS_编码细则.md` 查哪节）
 
-构造java数组：
+| 症状 | 细则小节 |
+| --- | --- |
+| 颜色值 / 数字字面量报 `Invalid ID, must be in the range [0..16)` | 1.3 |
+| 渐变着色器异常 | 1.5 |
+| canvas 画面滞后、冻结 | 1.6 |
+| 脚本静默失败、报 `push 是 number 而非函数` | 1.7 |
+| 取文件大小 / 修改时间报「无法找到函数」 | 1.7.1 |
+| 分不清哪些代码在 UI 线程上跑 | 2.1、2.4.1 |
+| 需要独立引擎跑子脚本（自动打标、避免串号） | 2.3.1 |
+| 子线程里改 UI 用什么 | 2.4 |
+| 子线程报错没冒泡出来 | 2.5 |
+| 中继只报「引擎已退出但未收到回执」 | 3.1 |
+| 其他零散坑 / 构造 java 类型数据 | 4、6 |
 
-```js
-let intArr = util.java.array("int", 2);
-intArr[0] = 1;
-intArr[1] = 2;
-
-let floatArr = util.java.array("float", 2);
-floatArr[0] = 3;
-floatArr[1] = 4;
-```
-
-构造javaFloat：
-
-```js
-java.lang.Float(0);
-```
-
-构造Java 的 float 类型：
-
-```js
-java.lang.Float(0).floatValue();
-```
-
-返回 java.lang.Float 对象（不是基本类型 float）
-
-```js
-java.lang.Float.valueOf(0);
-```

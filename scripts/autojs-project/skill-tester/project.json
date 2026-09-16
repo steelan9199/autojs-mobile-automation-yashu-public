@@ -1,0 +1,11 @@
+{
+  "name": "skill-tester",
+  "main": "main.js",
+  "ignore": [
+    "node_modules",
+    ".git",
+    "report.json",
+    "sub-result.json",
+    "*.log"
+  ]
+}

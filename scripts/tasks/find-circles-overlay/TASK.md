@@ -29,7 +29,7 @@ args: { "color": "string", "sensitivity": "number", "minRadius": "number", "maxR
 - **【红线】绝不能对 canvas setVisibility(GONE)**：v10 实测 GONE→VISIBLE 后呈现通道**永久死亡**（draw 照跑、屏幕永远旧帧/空帧）。收起功能只 GONE 面板，canvas 保持 VISIBLE（窗口缩到 120px 后圆圈画在小画布外自然不可见，无害）。INVISIBLE→VISIBLE 安全。
 - **所有 UI 回调（draw/定时器/触摸/滑块）体内必须 try-catch**：回调里的未捕获异常会杀死整个脚本引擎，窗口直接消失（v6 教训）。
 - **模板启动时会自动停掉旧的 find-circles-overlay 实例**（含其悬浮窗），重复下发不会叠加窗口；自清理用引擎 id 单要素判自保（见 references/引擎_self_识别与isSelf判定.md）。
-- 想关掉已显示的悬浮窗：让用户点「关闭」按钮，或按 SKILL.md「高频误判点」的链路（`list-running-scripts` → `stop-script-by-id`）停引擎；`run-task.js --stop` 对本模板无效（建好即回执后任务单已终态），原因与通用解法见 `references/现场脚本规范.md`。
+- 想关掉已显示的悬浮窗：让用户点「关闭」按钮，或按 `references/故障速查.md` 第 4 条的链路（`list-running-scripts` → `stop-script-by-id`）停引擎；`run-task.js --stop` 对本模板无效（建好即回执后任务单已终态），原因与通用解法见 `references/现场脚本规范.md`。
 - 回执里的 `circles` 坐标已换算成**屏幕坐标**，悬浮窗画的也是屏幕坐标；悬浮窗坐标原点与截屏坐标的状态栏高差，由 draw 回调里 `cv.getLocationOnScreen` 动态补偿。
 - 脚本会触发系统截图授权弹框，已内置多文案自动点击；首次授权需人工点一次，之后持久生效。
 - 悬浮窗全屏且可触摸（挡下层操作），这是有意设计：保证用户能点到滑块和「关闭」。
