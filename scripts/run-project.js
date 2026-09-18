@@ -16,6 +16,13 @@
 //   RELAY_RUN_PROJECT_URL（默认 http://localhost:9421/run-project）
 //   RELAY_HEALTH_URL（默认 http://localhost:9421/health）
 
+import fssync from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { gateFiles } from "./syntax-gate.js";
+
+const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+
 const RUN_PROJECT_URL =
   process.env.RELAY_RUN_PROJECT_URL || "http://localhost:9421/run-project";
 const HEALTH_URL =
@@ -32,15 +39,57 @@ function parseArgs(argv) {
   let argsRaw = null;
   let help = false;
   let waitSec = DEFAULT_WAIT_SEC;
+  let localDir = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--main") main = argv[++i];
     else if (a === "--args") argsRaw = argv[++i];
     else if (a === "--wait") waitSec = Number(argv[++i]);
+    else if (a === "--local-dir") localDir = argv[++i];
     else if (a === "-h" || a === "--help") help = true;
     else if (!projectName && !a.startsWith("--")) projectName = a;
   }
-  return { projectName, main, argsRaw, help, waitSec };
+  return { projectName, main, argsRaw, help, waitSec, localDir };
+}
+
+// ---- 下发前语法门禁（SKILL.md 硬约束 9）----
+// run-project 跑的是手机上已部署的工程，本地未必有源码；尽力找本地副本体检：
+//   1) --local-dir 显式指定  2) 技能内开发目录 scripts/autojs-project/<工程名>
+//   3) cwd/<工程名>
+// 找不到就跳过并提示（不阻断：已部署工程可能根本没有本地副本）。
+function findLocalProjectDir(projectName, explicit) {
+  const cands = [
+    explicit,
+    path.join(SCRIPTS_DIR, "autojs-project", projectName),
+    path.resolve(process.cwd(), projectName),
+  ];
+  for (const c of cands) {
+    if (!c) continue;
+    try {
+      if (fssync.existsSync(c) && fssync.statSync(c).isDirectory()) return c;
+    } catch {}
+  }
+  return null;
+}
+
+function collectJsFiles(dir) {
+  const out = [];
+  const walk = (d) => {
+    let items;
+    try {
+      items = fssync.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const it of items) {
+      if (it.name === "node_modules" || it.name === "build" || it.name.startsWith(".")) continue;
+      const p = path.join(d, it.name);
+      if (it.isDirectory()) walk(p);
+      else if (it.name.toLowerCase().endsWith(".js")) out.push(p);
+    }
+  };
+  walk(dir);
+  return out;
 }
 
 async function healthCheck() {
@@ -89,17 +138,29 @@ function formatLicenseNotice(status, text) {
 }
 
 async function main() {
-  const { projectName, main, argsRaw, help, waitSec: waitSecArg } = parseArgs(process.argv.slice(2));
+  const { projectName, main, argsRaw, help, waitSec: waitSecArg, localDir } =
+    parseArgs(process.argv.slice(2));
 
   if (help || !projectName) {
     process.stderr.write(
       "用法:\n" +
-        "  node scripts/run-project.js <工程名> [--main <入口.js>] [--args '<json>']\n\n" +
+        "  node scripts/run-project.js <工程名> [--main <入口.js>] [--args '<json>']\n" +
+        "        [--local-dir <本地工程目录>]   # 指定本地源码副本，用于下发前语法门禁\n\n" +
         "示例:\n" +
         "  node scripts/run-project.js demo\n" +
         "  node scripts/run-project.js demo --args '{\"count\":3}'\n"
     );
     quit(help ? 0 : 1);
+  }
+
+  // 语法门禁：本地能找到工程源码就体检（.js 全量），找不到只提示不阻断。
+  const localProjectDir = findLocalProjectDir(projectName, localDir);
+  if (localProjectDir) {
+    await gateFiles(collectJsFiles(localProjectDir), localProjectDir, quit);
+  } else {
+    process.stderr.write(
+      `[语法门禁] 跳过：本地找不到工程 "${projectName}" 的源码（可用 --local-dir 指定）\n`
+    );
   }
 
   const hc = await healthCheck();

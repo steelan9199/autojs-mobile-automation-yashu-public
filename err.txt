@@ -1,0 +1,13 @@
+﻿node : 用法:
+所在位置 行:15 字符: 3499
++ ... v:TERM = 'dumb'; node scripts/run-task.js 2>err.txt 1>out.txt; Get-Co ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (用法::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  run-task.js <模板名> --args '{"k":"v"}' [--wait 秒]
+  run-task.js --path tasks/<模板>.js --args '{"k":"v"}'
+  run-task.js --name <模板名> --args '{"k":"v"}'
+  run-task.js <本地脚本文件> --args '{"k":"v"}'
+  run-task.js --status <taskId> | --stop <taskId> | --list [数量]
+  [--allow-parallel] 静默「有任务在途」的并发告警（确认安全才加）

@@ -33,6 +33,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
+import { gateCode } from "./syntax-gate.js";
 
 const DEFAULT_BASE = "http://localhost:9421";
 const DEFAULT_WAIT_SEC = 30; // 短任务默认等待回执时长，与旧版 /run 超时一致
@@ -91,6 +92,20 @@ async function resolveLocalCode(p) {
     `读取文件失败: 未找到 ${p}（已尝试 cwd、技能根、scripts/ 三个基准）\n`
   );
   quit(3);
+}
+
+// ---- 下发前语法门禁（SKILL.md 硬约束 9）----
+// AutoJS 的 XML 字面量不是标准 JS，语法错误只会在手机端炸，且常常表现为
+// 「引擎已退出但未收到回执」的静默失败——排查成本极高。故下发前一律先体检，
+// 不过就直接拒绝下发，不浪费一次真机往返。
+//
+// 退出码 6 = 语法体检未通过（区别于 1 用法错 / 2 网络 / 3 文件 / 4 路径 / 5 授权）。
+// 应急放行：SKIP_SYNTAX_CHECK=1（不推荐）。
+//
+// 实现收敛到 scripts/syntax-gate.js，四个下发入口（run-task / run-project /
+// deploy-project / pc-to-phone）共用同一份，避免规则走样。
+function syntaxGate(code, label) {
+  gateCode(code, label, quit);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -444,6 +459,15 @@ async function main() {
         "  [--allow-parallel] 静默「有任务在途」的并发告警（确认安全才加）\n"
     );
     quit(1);
+  }
+
+  // ---- 下发前语法门禁（SKILL.md 硬约束 9）：体检不过一律不传手机 ----
+  // 只检查本地能读到的源码；走按名下载（本地无此文件）的路径无法体检，跳过并提示。
+  if (body.code) syntaxGate(body.code, phonePath || localFile || "<code>");
+  else if (phonePath) {
+    process.stderr.write(
+      `[语法门禁] 跳过：本地读不到 ${phonePath}（走手机端按名下载），无法体检\n`
+    );
   }
 
   if (dryRun) {

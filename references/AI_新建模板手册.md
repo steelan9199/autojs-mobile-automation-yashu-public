@@ -185,7 +185,7 @@ events.on("exit", function () {
 ## 4. 四步建模板（操作流）
 
 1. **建目录**：`mkdir -p scripts/tasks/<name>/`，目录名 = `<name>`。
-2. **写 `<name>.js`**：严格 ES5（`var` only），从注入的 `__TASK_ARGS_PATH` 读参，标准回执收尾（见 §5）。按 §2 对应类的骨架写。
+2. **写 `<name>.js`**：默认 ES5 风格（`var`；实测放行的 ES6 清单见《AI_AutoJS编码强制规范》§1.0），从注入的 `__TASK_ARGS_PATH` 读参，标准回执收尾（见 §5）。按 §2 对应类的骨架写。
 3. **写 `TASK.md`**：前言 3 元属性 `name` / `description` / `args` 必填，正文写场景/坑/兜底/示例/红线（见 §5.2）。在兄弟模板的「什么时候不该用」补一句反向指引，让家族互跳。
 4. **验证**：跑 `node scripts/scan-tasks.js --human`，确认新模板出现在清单、name+description 正确；再 `node --check` 校验 `.js` 语法。
 
@@ -310,9 +310,9 @@ try {
 
 要点：① `events.on("exit", ...)` 提到脚本最前，哪怕后面崩溃未注册也能回 `err`；② `ui.layout()` 成功后**立即同步** `sendResult`，UI 窗口随后自己常驻，PC 早已拿到回执返回；③ 关闭按钮 `exit()` 时 exit 监听会再补一条相同的 `ok:1` 回执，被中继忽略，无害。可运行样例见 `scripts/autojs代码参考例子/autojs-projects/ColorWheel/`。
 
-**⚠️ UI 类模板另有一个结构性前提：`'ui';` 必须是落盘文件的第一行**——经中继下发会被注入的引导代码挤到第二行、UI 模式静默失效（客户端已自动提行根治，2026-09-06，但规范仍要求绕行）。所以 **UI 类模板分两种形态**：
-- 模板脚本本身就需要 `ui.layout()`（如色轮类面板）→ 依赖客户端根治后的自动提行，TASK.md 里注明「需 2026-09-06 后版本客户端」；
-- 网页容器类（打开 URL）→ 用**启动器模式**（模板落盘首行 `'ui';` 的子脚本再 `execScriptFile` 拉起），不依赖客户端版本，范例即 `tasks/open-webview/`。根因与骨架详见 `references/AI_AutoJS编码强制规范.md` §2.0。
+**⚠️ UI 类模板有一个结构性前提：`'ui';` 必须是落盘文件的第一个字符**——注释/BOM/空行/任何语句挡在前面，UI 模式静默失效（报的是 `缺少必要的 activity 对象` 这类下游症状）。两种形态：
+- 模板脚本本身就用 `ui.layout()`（如色轮类面板）→ **第一个字符写 `'ui';` 直接下发即可**（2026-09-17 复测：单文件下发走 `execScriptFile`、原样执行不注入前缀，实测 `ok:1`）；
+- 需运行时拼装 UI 源码 / 网页容器类（打开 URL）→ 用**启动器模式**（模板落盘首行 `'ui';` 的子脚本再 `execScriptFile` 拉起），范例即 `tasks/open-webview/`。根因与骨架详见 `references/AI_AutoJS编码强制规范.md` §2.0。
 
 **长任务模板（超 30 秒/耗时不可预估）**：骨架三件套（① 参数读注入的 `__TASK_ARGS_PATH`；② 进度调注入的 `__reportProgress("3/10 ...")`；③ 回执照常 `{ok:1}/{ok:0,err}`，taskId 由客户端自动补写）照抄权威范例 `tasks/long-task-demo/`；PC 侧一律 `--wait 0` 立返单号、`--status` 轮询、卡死 `--stop` 强杀。每次**成功**任务由中继自动把手机端耗时记入 `tasks/<name>/duration_history.json`（滚动保留 10 条），`scan-tasks` 清单自动附 `[平均 X 秒]`（截尾平均），失败与被强杀的任务不记。
 
@@ -389,7 +389,7 @@ AI 读完 TASK.md 后可能判断模板脚本要为本次任务调整。规范�
 ### 7.4 扩展新变体的照抄要点
 
 1. 新建 `tasks/inspect_control_by_xxx/`，内含 `<name>.js` + `TASK.md`，前言写 `name/description/args`；
-2. 脚本严格 ES5（`var` only），从注入的 `__TASK_ARGS_PATH` 读参，必填缺失回 `{ok:0, err:"..."}`；
+2. 脚本默认 ES5 风格（`var`），从注入的 `__TASK_ARGS_PATH` 读参，必填缺失回 `{ok:0, err:"..."}`；
 3. 复用 §7.2 的「统一回执 + §7.3 挑选规则」，保持 AI 端一套逻辑统一处理；
 4. 在兄弟模板 `TASK.md` 的「什么时候不该用」补一句反向指引，让家族互相可跳转。
 

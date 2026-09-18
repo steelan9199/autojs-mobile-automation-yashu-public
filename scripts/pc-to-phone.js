@@ -24,6 +24,7 @@ import fssync from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
+import { gateFiles } from "./syntax-gate.js";
 
 const DEFAULT_URL = process.env.RELAY_URL || "http://localhost:9421/run";
 const HEALTH_URL = process.env.RELAY_HEALTH_URL || "http://localhost:9421/health";
@@ -179,6 +180,12 @@ async function main() {
   if (!stat.isFile()) {
     process.stderr.write(`不是普通文件: ${localFile}\n`);
     quit(3);
+  }
+
+  // 1.5) 下发前语法门禁（SKILL.md 硬约束 9）：.js 先体检，不过一律不传手机
+  // 非 .js（图片/音频/pdf 等资源文件）不参与体检。
+  if (/\.js$/i.test(localFile)) {
+    await gateFiles([localFile], localFile, quit);
   }
 
   const safeName = safePcName(localFile);

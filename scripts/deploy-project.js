@@ -24,6 +24,7 @@ import fssync from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { zipStored } from "./zip-lib.js";
+import { gateFiles } from "./syntax-gate.js";
 
 const DEFAULT_URL = process.env.RELAY_URL || "http://localhost:9421/run";
 const HEALTH_URL = process.env.RELAY_HEALTH_URL || "http://localhost:9421/health";
@@ -384,6 +385,14 @@ async function main() {
     process.stderr.write("工程目录里没有任何可部署的文件（全被 ignore 了？）\n");
     quit(3);
   }
+
+  // ---- 下发前语法门禁（SKILL.md 硬约束 9）：所有 .js 先体检，不过一律不传手机 ----
+  // 放在 --dry-run 之前：预览阶段也要暴露语法问题，省一次真机往返。
+  await gateFiles(
+    files.map((rel) => path.join(projectDir, rel)),
+    projectDir,
+    quit
+  );
 
   // --dry-run：只打印部署计划，不连手机、不上传（便于预览 / 验证相对结构）
   if (dryRun) {

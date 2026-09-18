@@ -20,6 +20,9 @@ PC 端 AI 是"大脑"，手机端 AutoJS 是"双手"：用户一句话描述任�
 6. **现场脚本全程 try-catch，错误必回传**：经中继下发的脚本，catch 里给 `result` 赋 `{ok:0, err}` 并靠 `events.on("exit")` 里 `autojs_result` 广播回执——**吞掉异常 = PC 端只能干等超时**，是最难排查的静默失败。
 7. **⛔ 永不把「客户端引擎」当停止目标**：执行端本体（路线A `main.js` / 路线B `autojs-task-phone-client.js`）一停 = 断连、悬浮球变红、**PC 无法远程唤醒，必须用户手动重开 App**。清场**只用 `node scripts/run-task.js --stop <taskId>`** 按任务单精确强杀；禁止「列出来然后全量 stop」；`list-running-scripts` 本身可用——清常驻 UI 残留窗口时正是靠它取 id，再 `stop-script-by-id` 按 id 精确停（此时 `--stop` 会回 `alreadyFinished` 而无效）；`isClient:true` / `clientIds` 里的条目不是可停目标；`stop-script-by-id` 返回 `ok:0 + blockedClient` 是护栏不是 bug，不许改传 `forceStopClient:true` 绕过。（判定细则 `references/引擎_self_识别与isSelf判定.md`）
 8. **AI 读图能力按实测判断，勿武断**：先 `Read` 实测一次，能识别就据此决策，被过滤则改用 `ocr` / `inspect_control_*` / 问用户，不硬猜。
+9. **⛔ 语法门禁：体检不过一律不下发**。**四个下发入口全部内置门禁**（无需手动跑）：`run-task.js`（单脚本源码）/ `deploy-project.js`（工程内所有 .js，在 `--dry-run` 之前）/ `pc-to-phone.js`（仅 .js 文件）/ `run-project.js`（本地能找到源码副本时，见下）。不过就拒绝发送、**退出码 6**（1 用法错 / 2 网络 / 3 文件 / 4 路径 / 5 授权 / 6 语法不过），代码根本不会传到手机——语法错在手机端多表现为「引擎已退出但未收到回执」的静默失败，排查成本极高。手动体检：`node scripts/check-autojs-syntax.cjs scripts/tasks/<name>/<name>.js`。双引擎：有 `@babel/parser`（已列入 `scripts/package.json` 的 **dependencies**，必装）就用 jsx 插件原文件直解析；缺失时降级零依赖内置引擎（XML 区域等长遮蔽 + 标签栈配平）并告警，**不会因缺包卡死下发**。应急放行 `SKIP_SYNTAX_CHECK=1`（不推荐，用完说明原因）。**界面一律用 XML 字面量写，禁止 `parts.push` 拼字符串**（见 `references/AutoJS6_UI界面与悬浮窗XML指南.md` §11）。
+   门禁实现收敛在 `scripts/syntax-gate.js`（`gateCode` / `gateFiles`），四个入口共用同一份，改规则只改一处。
+   `run-project.js` 跑的是手机上已部署工程，本地未必有源码：按 `--local-dir` → `scripts/autojs-project/<工程名>` → `cwd/<工程名>` 找副本，找到就体检，**找不到只提示不阻断**（`[语法门禁] 跳过：…`）。
 
 ## 授权提示（必须遵守，不可省略）
 

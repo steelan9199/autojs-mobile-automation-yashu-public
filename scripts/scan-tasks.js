@@ -80,7 +80,7 @@ function parseFrontmatter(md) {
  * 参数名只能靠猜，而参数名并不总能从模板名推出来（实测踩坑：`key` 模板的参数
  * 叫 `name` 而不是 `key`，凭直觉传 {"key":"home"} 直接失败）。猜错的代价是
  * 「一轮失败 + 重读 TASK.md + 重跑」，远高于这里多出的几百 token。
- * 预算充足（实测 1968 tok / 上限 5300），故默认就带。
+ * 本层无红线（2026-09-17 决策：模板沉淀即有用，不按字数压 description），故默认就带。
  */
 function briefArgs(raw) {
   if (!raw) return "";

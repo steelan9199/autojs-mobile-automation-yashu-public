@@ -13,7 +13,7 @@ args: { "name": "string" }
 
 ## 什么时候不该用
 - 只想要局部区域：用 `crop-screenshot` 更省带宽、更聚焦。
-- 已经在用 `GET /screenshot`（中继整屏二进制直传）：那是另一条更轻的通道，无需经任务模板下发。
+- 已经在用 `GET /screenshot` 接口：那是另一条更轻的同步通道，无需经任务模板下发。⚠️ 注意：该接口返回 JSON `{success, path, size}`，不是图片二进制——必须解析 JSON 取 `path` 后再 Read 图片，不要直接把响应当图片保存。
 
 ## 参数细节与坑
 - `name` 选填：仅允许字母数字 `_ - .`，强制 `.png` 结尾；留空则默认 `screenshot_<时间戳>.png`，避免重名覆盖。

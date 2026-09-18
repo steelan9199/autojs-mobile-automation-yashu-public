@@ -98,6 +98,13 @@ var MULTIPLY = java.lang.Enum.valueOf(ModeClass, "MULTIPLY");
 
 ### 1.6 悬浮窗 canvas draw 回调每帧首行必须清屏（画面呈现滞后/冻结，高频炸点）
 
+> 另有一条更高频的坑（2026-09-17 实测）：**`<canvas>` 上绝不能写 `bg`**（任何 background 属性）。
+> canvas 的 Java 类是 `JsCanvasView`（底层 Android `TextureView`），给 TextureView 设 background 会
+> **直接抛异常，整块界面/窗口都建不起来**：`TextureView doesn't support displaying a background drawable`
+> → `android.view.InflateException`。`ui.layout` 与 `floaty.window` 均已复现。要背景色就包一层父容器
+> （`<vertical bg="#cc1a1a1a"><canvas .../></vertical>`）。canvas 在 `ui.layout` / `floaty.window` /
+> `floaty.rawWindow` **三种宿主里都能正常渲染**，与宿主类型无关。
+
 floaty 悬浮窗的 canvas 是在**持久缓冲**上绘制的。`on("draw")` 回调里若不做清屏，会出现
 极具迷惑性的"呈现滞后/冻结"：draw 回调照常以 ~30fps 执行、同窗口的 TextView 正常刷新，
 但屏幕上的 canvas 画面停在旧帧（几秒~几十秒才偶尔跳一帧，甚至长期不动）——
@@ -211,7 +218,7 @@ var exec3 = __spawnSub("./child.js", "/sdcard/.../child-args.json"); // 指定�
 - 读子脚本源码 → 在内存里拼上**同款注入前缀**（`__TASK_ID` / `__TASK_ARGS_PATH` / `__reportProgress` / 打标代理 / `__spawnSub` 自身）→ `engines.execScript(名字, 源码, { path: 子脚本所在目录 })`；**不落临时文件**；
 - 于是子引擎回执**自动带父任务号**。实测：子脚本源码里刻意不写 `__taskId`，回执里仍出现父任务号；
 - `require` 基准 = 子脚本所在目录；`files.cwd()` = 子脚本目录；
-- 子脚本首行的 `'ui';` 之类的指令会**自动提到最前**（否则被注入前缀挤走后静默失效）；
+- 子脚本首行的 `'ui';` 之类的指令会**自动提到最前**（否则被注入前缀挤走后静默失效）；匹配正则为 `/^[ \t]*('ui'|"ui")[ \t]*;?/`，**只认文件最开头的引号，注释挡前面一样提不出来**（与 `runProject` 同款规则）；
 - 第二参数省略时子脚本继承父的 `__TASK_ARGS_PATH`；返回 `ScriptExecution`（可 `.getId()`）；注入失败自动回退 `engines.execScriptFile`，不会把主流程搞挂；
 - 子引擎里同样有 `__spawnSub`，**孙脚本也带父任务号**（实测通过），任意深度行为一致。
 - 边界：① 只覆盖「用 `__spawnSub` 拉起的」子脚本 —— 第三方库内部直接调 `engines.execScriptFile` 的仍无 tag，客户端兜底归因不能撤；② 子引擎的 `engines.myEngine().source` 形如 `$engine/<名字>.js`（**没有真实文件路径**），用 `source` 过滤引擎时要预料到这类引擎。

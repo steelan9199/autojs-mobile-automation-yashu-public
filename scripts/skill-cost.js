@@ -34,7 +34,12 @@ const HISTORY_FILE = path.join(__dirname, ".skill-cost-history.jsonl");
 // 红线。常驻层用 **token** 计量（「钱」按 token 算，不按字符算）。
 const BUDGET = {
   perTurnTok: 1500, // 每轮：SKILL.md 全文（≈3300 字符）
-  plan: 5300, // 规划层：scan-tasks 输出（字符，兼容旧口径）
+  // 规划层 scan-tasks：**不设红线**（0 = 豁免，仅观测）。
+  // 理由（2026-09-17 决策）：模板是沉淀下来的能力，既然建了就有用；数量与 description
+  // 会随能力增长自然变长，压 description 会直接伤害「规划阶段靠 description 选模板」的
+  // 命中率——省下的是一次性规划 token，赔掉的是选错/漏选模板后重跑一整轮任务的代价。
+  // 且规划层每次任务只付一次、增长上限有限。故只记录数字，不参与红灯判定。
+  plan: 0,
   reference: 9000, // 按需层：单篇「整篇读」的 references/*.md（字符）
   template: 6000, // 模板层：单篇 tasks/*/TASK.md（字符）
 };
@@ -325,7 +330,16 @@ function printSummary(result, topN) {
     )
   );
   L.push(line(r.manual.label, r.manual.chars, r.manual.tok, r.manual.note));
-  L.push(line(r.plan.label, r.plan.chars, r.plan.tok, `预算 ${BUDGET.plan}  ${r.plan.chars <= BUDGET.plan ? "✅" : "❌"}`));
+  L.push(
+    line(
+      r.plan.label,
+      r.plan.chars,
+      r.plan.tok,
+      BUDGET.plan > 0
+        ? `预算 ${BUDGET.plan}  ${r.plan.chars <= BUDGET.plan ? "✅" : "❌"}`
+        : "无红线（模板沉淀豁免，仅观测）"
+    )
+  );
   L.push(
     line(
       r.refWhole.label,
