@@ -14,6 +14,13 @@
       "request": "launch",
       "command": "git pull --ff-only origin main; exit $LASTEXITCODE",
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "🔍 Check remote consistency",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "git fetch origin main; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $local = git rev-parse HEAD; $remote = git rev-parse origin/main; $dirty = git status --porcelain; if (($local -eq $remote) -and (-not $dirty)) { Write-Host '本地仓库和远端代码仓库 一样' } else { Write-Host '本地仓库和远端代码仓库 不一样' };",
+      "cwd": "${workspaceFolder}"
     }
   ]
 }
