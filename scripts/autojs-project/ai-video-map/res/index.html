@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-fs="m">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0B0C10">
+<title>AI视频概念地图</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ══ 顶栏 ══ -->
+  <header class="topbar">
+    <div class="brand-row">
+      <div class="brand">
+        <div class="brand-t" id="brandTitle">AI视频概念地图</div>
+        <div class="brand-s" id="brandSub">从一句话到一部片 · 47 个概念</div>
+      </div>
+      <button class="fsbtn" id="fsBtn" data-act="fs" title="切换字号">Aa</button>
+    </div>
+    <div class="search">
+      <span class="mag">⌕</span>
+      <input id="q" type="search" placeholder="搜概念 / logline / 景别 / 剪辑…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button id="qclear" data-act="qclear" hidden>✕</button>
+    </div>
+  </header>
+
+  <!-- ══ 主区 ══ -->
+  <main id="main">
+
+    <!-- 地图（默认视图） -->
+    <section id="viewMap" class="view">
+      <div id="chips" class="chips"></div>
+      <div id="resumeBox"></div>
+      <div class="intro" id="introBox"></div>
+      <div id="map"></div>
+      <div class="outro" id="outroBox"><span class="ol">一句话收尾</span></div>
+    </section>
+
+    <!-- 概念列表 -->
+    <section id="viewList" class="view" hidden>
+      <div id="list" class="list"></div>
+    </section>
+
+    <!-- 收藏 -->
+    <section id="viewFav" class="view" hidden>
+      <div id="fav" class="list"></div>
+    </section>
+
+    <!-- 搜索结果 -->
+    <section id="viewSearch" class="view" hidden>
+      <div class="searchinfo" id="searchInfo"></div>
+      <div id="results" class="list"></div>
+    </section>
+
+  </main>
+
+  <!-- ══ 底部 Tab ══ -->
+  <nav class="tabbar">
+    <button class="tab active" data-act="tab" data-tab="map"><span class="ti">◈</span>地图</button>
+    <button class="tab" data-act="tab" data-tab="list"><span class="ti">☰</span>概念</button>
+    <button class="tab" data-act="tab" data-tab="fav"><span class="ti">★</span>收藏</button>
+  </nav>
+
+</div>
+
+<!-- ══ 详情抽屉 ══ -->
+<div id="mask" class="mask" data-act="mask" hidden></div>
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-hd">
+    <div class="grab"></div>
+    <div class="sheet-hd-l">
+      <h2 id="sName"></h2>
+      <div class="mono" id="sAlias"></div>
+    </div>
+    <div class="sheet-hd-r">
+      <button class="iconbtn" id="sFav" data-act="fav" title="收藏">☆</button>
+      <button class="iconbtn" id="sClose" data-act="close" title="关闭">✕</button>
+    </div>
+  </div>
+  <div class="sheet-body" id="sBody">
+    <div class="tag" id="sTag"></div>
+    <p class="def" id="sDef"></p>
+    <div class="ai-block" id="sAiBox">
+      <span class="lbl">AI 里动哪一下</span>
+      <p id="sAi"></p>
+    </div>
+    <div class="why-block" id="sWhyBox">
+      <span class="lbl">为什么必须在乎</span>
+      <p id="sWhy"></p>
+    </div>
+  </div>
+  <div class="sheet-ft">
+    <button id="sPrev" data-act="prev">← 上一个</button>
+    <button id="sCopy" class="primary" data-act="copy">复制全文</button>
+    <button id="sNext" data-act="next">下一个 →</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!--APPINFO-->
+
+<script src="concepts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

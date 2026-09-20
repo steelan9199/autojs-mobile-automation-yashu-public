@@ -1,0 +1,30 @@
+{
+    "name": "ai-video-map",
+    "main": "main.js",
+    "packageName": "com.musk.aivideomap",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "launchConfig": {
+        "displaySplash": true,
+        "splashText": "AI视频概念地图",
+        "hideLogs": true,
+        "stableMode": false
+    },
+    "assets": [],
+    "encryptLevel": 0,
+    "useFeatures": [],
+    "optimization": {
+        "removeOpenCv": true,
+        "unusedResources": false
+    },
+    "scripts": {},
+    "ignore": [
+        "/.internal/",
+        "/.data/",
+        "/build/",
+        "/node_modules/",
+        "/out/",
+        "/declarations/",
+        "/autojs6-dts/"
+    ]
+}

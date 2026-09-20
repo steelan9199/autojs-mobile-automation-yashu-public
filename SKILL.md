@@ -23,6 +23,7 @@ PC 端 AI 是"大脑"，手机端 AutoJS 是"双手"：用户一句话描述任�
 9. **⛔ 语法门禁：体检不过一律不下发**。**四个下发入口全部内置门禁**（无需手动跑）：`run-task.js`（单脚本源码）/ `deploy-project.js`（工程内所有 .js，在 `--dry-run` 之前）/ `pc-to-phone.js`（仅 .js 文件）/ `run-project.js`（本地能找到源码副本时，见下）。不过就拒绝发送、**退出码 6**（1 用法错 / 2 网络 / 3 文件 / 4 路径 / 5 授权 / 6 语法不过），代码根本不会传到手机——语法错在手机端多表现为「引擎已退出但未收到回执」的静默失败，排查成本极高。手动体检：`node scripts/check-autojs-syntax.cjs scripts/tasks/<name>/<name>.js`。双引擎：有 `@babel/parser`（已列入 `scripts/package.json` 的 **dependencies**，必装）就用 jsx 插件原文件直解析；缺失时降级零依赖内置引擎（XML 区域等长遮蔽 + 标签栈配平）并告警，**不会因缺包卡死下发**。应急放行 `SKIP_SYNTAX_CHECK=1`（不推荐，用完说明原因）。**界面一律用 XML 字面量写，禁止 `parts.push` 拼字符串**（见 `references/AutoJS6_UI界面与悬浮窗XML指南.md` §11）。
    门禁实现收敛在 `scripts/syntax-gate.js`（`gateCode` / `gateFiles`），四个入口共用同一份，改规则只改一处。
    `run-project.js` 跑的是手机上已部署工程，本地未必有源码：按 `--local-dir` → `scripts/autojs-project/<工程名>` → `cwd/<工程名>` 找副本，找到就体检，**找不到只提示不阻断**（`[语法门禁] 跳过：…`）。
+10. 如果要创建临时文件，那就创建到这个文件夹里面: `<skill_dir>/temp`
 
 ## 授权提示（必须遵守，不可省略）
 
