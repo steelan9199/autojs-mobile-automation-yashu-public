@@ -88,23 +88,6 @@
   sleep(800);
 })();
 
-// ==================== 截图权限 ====================
-
-// 自动点击截图权限弹窗的"立即开始"（小米/多数国产 ROM 适用）
-
-threads.start(function () {
-  textMatch(/立即开始|开始截图|开始使用|立即启用|START NOW/)
-    .clickable(true)
-    .findOne(3000)
-    ?.click();
-});
-
-// 请求截图
-if (!requestScreenCapture()) {
-  toastLog("请求截图失败");
-  exit();
-}
-
 // ==================== 配置 ====================
 
 // ★★★ 改成你电脑的局域网 IP ★★★
@@ -226,6 +209,24 @@ var DATA_DIR = files.join(PC_ZONE_DIR, "data");
     console.error("[relocate] 自归位失败（原地继续运行）: " + e);
   }
 })();
+
+// ==================== 截图权限 ====================
+// 自动点击截图权限弹窗的"立即开始"（小米/多数国产 ROM 适用）
+// 按钮文案因 ROM 而异，多候选正则一次覆盖；未命中则弹框停在屏幕上，用户手动点同样生效。
+// 详见 references/截图权限与弹框处理.md
+
+threads.start(function () {
+  textMatch(/立即开始|开始截图|开始使用|立即启用|START NOW/)
+    .clickable(true)
+    .findOne(3000)
+    ?.click();
+});
+
+// 请求截图
+if (!requestScreenCapture()) {
+  toastLog("请求截图失败");
+  exit();
+}
 
 // 重连间隔（毫秒）
 var RECONNECT_INTERVAL = 3000;
