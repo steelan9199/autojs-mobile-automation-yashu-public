@@ -12,6 +12,14 @@
  *         且改多少次代码都不生效（极难排查）。合成成单文档后不存在子资源请求，
  *         这个坑从根上没有了。
  *
+ * 打包（APK）形态的坑 —— 2026-09-20 实测，别再踩：
+ *         AutoJs6 打包时会把工程内**所有 .js 文件加密**，只有 .html / .css 这类资源是明文原样打包。
+ *         于是运行期 files.read('res/concepts.js') 读回来的是密文（头 77 01 17 7F），
+ *         内联进 <script> 必然语法错误 → 页面只剩 HTML 骨架那几行字（标题/搜索框/Tab 在，内容全空），
+ *         而中继运行（工程在 /sdcard 是明文）完全正常 —— 极容易误判成前端 bug。
+ *         对策：优先读 PC 侧预合成的 res/page.html（tools/build-page.js 生成，.html 是明文资源），
+ *         实在没有才退回下面这条运行期合成路线。
+ *
  * 其他几处也是踩坑定的，别随手改：
  *   · XML 的 <webview> 不写 url 属性 —— 写了会立刻开始加载，
  *     而 JS 设置项（启用 JS / DOM 存储 / 缓存策略）只能在那之后执行。
@@ -71,8 +79,31 @@ function pickOutFile(tag) {
     return files.join(files.getSdcardPath(), name);
 }
 
-/* 把 res/ 下四个文件合成一份自带全部内容的 HTML */
+/* 判定读到的内容是不是 AutoJs6 打包后的**加密脚本**。
+ * 打包 APK 时工程内所有 .js 都会被加密，文件头固定是 0x77 0x01 0x17 0x7F（16 进制：77 01 17 7F）。
+ * 这种内容内联进 <script> 必然是语法错误 → 页面 JS 全废（只剩 HTML 骨架的几行字）。 */
+function looksEncrypted(s) {
+    if (!s || s.length < 4) { return true; }
+    return s.charCodeAt(0) === 0x77 && s.charCodeAt(1) === 0x01 &&
+        s.charCodeAt(2) === 0x17 && s.charCodeAt(3) === 0x7F;
+}
+
+/* 把 res/ 下四个文件合成一份自带全部内容的 HTML
+ * 顺序：先试预合成的 page.html（普通 .html 资源，打包形态下是**明文**，一定读得到），
+ *       没有再退回运行期合成（中继运行形态下工程是明文，这条路仍然最新最灵）。 */
 function buildBundle(resDir, info) {
+    /* ① 预合成单页（PC 侧 tools/build-page.js 生成） */
+    try {
+        var pageFile = files.join(resDir, 'page.html');
+        if (files.exists(pageFile)) {
+            var pre = files.read(pageFile);
+            if (!looksEncrypted(pre) && pre.indexOf('<html') >= 0) {
+                return { html: pre, left: '', size: pre.length, mode: 'page.html' };
+            }
+        }
+    } catch (eP) { }
+
+    /* ② 运行期合成（兜底） */
     var html = files.read(files.join(resDir, 'index.html'));
     var css = files.read(files.join(resDir, 'style.css'));
     var dataJs = files.read(files.join(resDir, 'concepts.js'));
@@ -92,8 +123,10 @@ function buildBundle(resDir, info) {
     if (html.indexOf('href="style.css"') >= 0) { left += 'css '; }
     if (html.indexOf('src="concepts.js"') >= 0) { left += 'data '; }
     if (html.indexOf('src="app.js"') >= 0) { left += 'app '; }
+    /* 密文自检：命中说明这是打包形态且 page.html 缺失/过期 → 页面必然是空的 */
+    if (looksEncrypted(dataJs) || looksEncrypted(appJs)) { left += 'JS-ENCRYPTED '; }
 
-    return { html: html, left: left, size: css.length + dataJs.length + appJs.length };
+    return { html: html, left: left, size: css.length + dataJs.length + appJs.length, mode: 'runtime' };
 }
 
 try {
@@ -121,7 +154,7 @@ try {
             var out = pickOutFile(String(built.size));
             files.write(out, built.html);
             pageUrl = 'file://' + out;
-            info += ' | bundle=' + built.size + 'B left=[' + built.left + ']';
+            info += ' | bundle=' + built.size + 'B via=' + built.mode + ' left=[' + built.left + ']';
         } catch (eW) {
             info += ' | WRITE-FAILED: ' + eW;
         }
