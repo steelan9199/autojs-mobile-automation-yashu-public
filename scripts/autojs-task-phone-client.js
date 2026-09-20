@@ -91,8 +91,12 @@
 // ==================== 截图权限 ====================
 
 // 自动点击截图权限弹窗的"立即开始"（小米/多数国产 ROM 适用）
+
 threads.start(function () {
-  text("立即开始").clickable(true).findOne(3000)?.click();
+  textMatch(/立即开始|开始截图|开始使用|立即启用|START NOW/)
+    .clickable(true)
+    .findOne(3000)
+    ?.click();
 });
 
 // 请求截图
@@ -312,7 +316,10 @@ function attributeUntaggedTask() {
   var bestFinished = null;
   for (var id in taskRegistry) {
     var t = taskRegistry[id];
-    if (bestLatest === null || t.startedAt > taskRegistry[bestLatest].startedAt) {
+    if (
+      bestLatest === null ||
+      t.startedAt > taskRegistry[bestLatest].startedAt
+    ) {
       bestLatest = id;
     }
     if (aliveIds) {
@@ -322,7 +329,10 @@ function attributeUntaggedTask() {
           ? true
           : aliveIds[t.engineId] === true;
       if (!alive) {
-        if (bestFinished === null || t.startedAt > taskRegistry[bestFinished].startedAt) {
+        if (
+          bestFinished === null ||
+          t.startedAt > taskRegistry[bestFinished].startedAt
+        ) {
           bestFinished = id;
         }
       }
@@ -1021,7 +1031,8 @@ function runScript(cmd) {
       uiDirective = "'ui';\n";
       code = code.slice(uiMatch[0].length);
     }
-    code = uiDirective + buildTaskPrologue(taskId, perTaskArgsPath) + "\n" + code;
+    code =
+      uiDirective + buildTaskPrologue(taskId, perTaskArgsPath) + "\n" + code;
 
     // 写入 AutoJS 默认脚本文件夹（每次运行都重新拉取最新版、覆盖同名文件，
     // PC 改动立即生效；文件落进 /sdcard/脚本 后手机 AutoJS 里能直接看到、可手动管理）。
@@ -1137,7 +1148,10 @@ function runProject(cmd) {
           } catch (eRm) {}
         }
       } catch (eLs) {}
-      var injectedEntry = files.join(projectDir, ENTRY_FILE_PREFIX + taskId + ".js");
+      var injectedEntry = files.join(
+        projectDir,
+        ENTRY_FILE_PREFIX + taskId + ".js",
+      );
       files.ensureDir(injectedEntry);
       files.write(
         injectedEntry,
