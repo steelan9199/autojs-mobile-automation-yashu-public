@@ -1,0 +1,15 @@
+/* MARK:CSS — 探针样式表，验证 .css 在打包 APK 里是否为明文 */
+body {
+  font-family: -apple-system, "Noto Sans CJK SC", sans-serif;
+  margin: 0;
+  padding: 16px;
+  color: #1f2328;
+  background: #ffffff;
+}
+.probe-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #0969da;
+  color: #fff;
+}

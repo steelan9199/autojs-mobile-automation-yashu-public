@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-fs="m">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<title>TypeSafe 中文文档</title>
+
+<!-- ── 第三方（vendor）：Markdown 渲染 / 代码高亮 / 正文排版 ──
+     这三个是正文的全部来源，本工程不再自写渲染器与正文样式。
+     ⚠️ tools/build-page.cjs 会把它们**就地内联**进 page.html：
+        AutoJs6 打包后 .js 会被加密，WebView 不解密 →
+        外链 <script src="vendor/*.js"> 在 APK 里必然白屏。 -->
+<link rel="stylesheet" href="vendor/github-markdown.css">
+<link rel="stylesheet" href="vendor/highlight-github.css">
+<!-- 本工程的外壳样式。**必须排在 vendor 之后**，否则压不过 vendor 的字号/颜色 -->
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ══ 顶栏 ══ -->
+  <header class="topbar">
+    <div class="brand-row">
+      <div class="brand">
+        <div class="brand-t" id="brandTitle">TypeSafe 中文文档</div>
+        <div class="brand-s" id="brandSub">System One · 让代码直接消费模型的判断</div>
+      </div>
+      <button class="fsbtn" id="fsBtn" data-act="fs" title="切换字号">Aa</button>
+    </div>
+    <div class="search">
+      <span class="mag">⌕</span>
+      <input id="q" type="search" placeholder="搜标题 / 概念 / Choice / confidence…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button id="qclear" data-act="qclear" hidden>✕</button>
+    </div>
+  </header>
+
+  <!-- ══ 主区 ══ -->
+  <main id="main">
+
+    <!-- 知识地图（默认视图） -->
+    <section id="viewMap" class="view">
+      <div id="chips" class="chips"></div>
+      <div id="resumeBox"></div>
+      <div class="intro" id="introBox"></div>
+      <div id="map"></div>
+      <div class="outro" id="outroBox"><span class="ol">一句话收尾</span></div>
+    </section>
+
+    <!-- 文档列表 -->
+    <section id="viewDocs" class="view" hidden>
+      <div id="list" class="list"></div>
+    </section>
+
+    <!-- 收藏 -->
+    <section id="viewFav" class="view" hidden>
+      <div id="fav" class="list"></div>
+    </section>
+
+    <!-- 搜索结果 -->
+    <section id="viewSearch" class="view" hidden>
+      <div class="searchinfo" id="searchInfo"></div>
+      <div id="results" class="list"></div>
+    </section>
+
+  </main>
+
+  <!-- ══ 底部 Tab ══ -->
+  <nav class="tabbar">
+    <button class="tab active" data-act="tab" data-tab="map"><span class="ti">◈</span>地图</button>
+    <button class="tab" data-act="tab" data-tab="docs"><span class="ti">☰</span>文档</button>
+    <button class="tab" data-act="tab" data-tab="fav"><span class="ti">★</span>收藏</button>
+  </nav>
+
+</div>
+
+<!-- ══ 详情抽屉 ══ -->
+<div id="mask" class="mask" data-act="mask" hidden></div>
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-hd">
+    <div class="grab"></div>
+    <div class="sheet-hd-l">
+      <h2 id="sName"></h2>
+      <div class="mono" id="sAlias"></div>
+    </div>
+    <div class="sheet-hd-r">
+      <button class="iconbtn" id="sFav" data-act="fav" title="收藏">☆</button>
+      <button class="iconbtn" id="sClose" data-act="close" title="关闭">✕</button>
+    </div>
+  </div>
+  <div class="sheet-body" id="sBody">
+    <div class="tag" id="sTag"></div>
+    <div class="origin" id="sOrigin"></div>
+    <!-- 页内目录：扫正文的 h2/h3 现场生成，没有标题就不占位 -->
+    <div class="toc" id="sToc" hidden></div>
+    <!-- 正文：markdown-body class 由 github-markdown-css 接管全部排版 -->
+    <div id="sContent" class="markdown-body"></div>
+  </div>
+  <div class="sheet-ft">
+    <button id="sPrev" data-act="prev">← 上一个</button>
+    <button id="sCopy" class="primary" data-act="copy">复制全文</button>
+    <button id="sNext" data-act="next">下一个 →</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- ── 构建期占位符，由 tools/build-page.cjs 展开（两个：启动信息 / 正文内联位）──
+     ⚠️ 本注释里**故意不写出占位符原样**：HTML 注释不能嵌套，写了就会把外层注释提前截断，
+        于是占位符变成出现两次、正文被内联两遍（构建脚本已加"必须只出现一次"的断言兜住）。
+     · 启动信息占位符 → 展开成 window.APPINFO，并在末尾留一个 APPINFO 标记：
+       main.js 在把 page.html 落盘前用**真机实际路径**替换它
+       （app.js 靠它拼 file:// 绝对路径，走同步 XHR 兜底）。
+     · 正文内联位占位符 → **M2 起默认只在外壳里留一句注释**：
+       正文按需从 res/docs/*.md 读取（同步 XHR / page.jsBridge）。
+       只有 `node tools/build-page.cjs --inline` 才把它展开成内联正文，
+       用来生成 M1 全量形态（回退用），自检会分别校验两种形态。 -->
+<!--APPINFO-->
+
+<!--DOCS-->
+
+<!-- ── 依赖顺序：渲染器 → 高亮 → 站点配置 → 目录产物 → 外壳逻辑 ──
+     00-index.js 手写（站点配置 + 目标清单）；
+     01-pages.js **自动生成**（扫 res/docs/*.md 的 frontmatter → window.DOC_FM）。 -->
+<script src="vendor/marked.umd.js"></script>
+<script src="vendor/highlight.min.js"></script>
+<script src="data/00-index.js"></script>
+<script src="data/01-pages.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

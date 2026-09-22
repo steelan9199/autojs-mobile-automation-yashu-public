@@ -4,10 +4,17 @@
 // 用法:
 //   node scripts/deploy-project.js <工程目录> [--name <工程名>] [--main <入口.js>]
 //                                    [--run] [--no-run] [--args '<json>'] [--keep] [--dry-run]
+//                                    [--zip|--no-zip] [--keep-zip]
+//
+// 传输形态（默认自动判定，见 SKILL.md 硬约束 10）:
+//   - 含子目录结构 或 文件数 >= 5  ->  打成一个 zip，只走「一次」PC→手机 传输，手机端解压；
+//   - 仅 <5 个平铺文件             ->  逐文件直传。
+//   --zip / --no-zip 强制覆盖判定。逐文件是 N 次往返，小文件多时几乎全是握手开销。
 //
 // 设计要点（与"单文件模板"通道并存，互不影响）:
 //   - PC 开发态统一为多文件工程（main.js + modules/ + assets/...），AI 在电脑上组织好；
-//   - 下发态 = 部署真实工程：逐个文件经 PC→手机 通道（复用 /pcfile + send_file_to_phone 模板）
+//   - 下发态 = 部署真实工程：走 PC→手机 通道（复用 /pcfile + send_file_to_phone；打包形态额外调
+//     unzip-project 在手机端解压）
 //     落盘到手机 scripts-from-computer/project/<name>/ 下（PC 下发产物隔离区，与用户手写脚本隔离），严格保持 PC 上的相对目录结构；
 //   - 图片/音频等二进制资源作为普通文件原样下发（二进制安全、按字节数校验），手机按相对路径
 //     直接读取，无需 base64 内联——这是选"部署真实工程"而非"打包单文件"的关键原因；
@@ -74,7 +81,10 @@ function parseArgs(argv) {
   let keep = false;
   let dryRun = false;
   let help = false;
-  let zip = false;
+  /* null = auto：按 SKILL.md 硬约束 12 自动判定要不要打包 ——
+     含子目录结构 或 文件数 ≥5 → 打包成 1 个 zip。判定要等 collectFiles 拿到真实清单才能做。
+     --zip / --no-zip 可强制覆盖（少数调试场景才需要逐文件）。 */
+  let zip = null;
   let keepZip = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -342,7 +352,9 @@ function formatLicenseNotice(status, text) {
 
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
-  const { name, main, run, argsRaw, keep, dryRun, help, zip, keepZip } = parsed;
+  /* zip 入参是 null / true / false 的**意图**（null = 交给规则判定），
+     最终传输形态由下面的判定段算出，故这里改名 zipOpt，避免和最终值混淆。 */
+  const { name, main, run, argsRaw, keep, dryRun, help, zip: zipOpt, keepZip } = parsed;
   const projectDir = normalizeLocalPath(parsed.projectDir);
 
   if (help || !projectDir) {
@@ -350,11 +362,15 @@ async function main() {
       "用法:\n" +
         "  node scripts/deploy-project.js <工程目录> [--name <工程名>] [--main <入口.js>]\n" +
         "                                    [--run] [--no-run] [--args '<json>'] [--keep]\n" +
-        "                                    [--zip] [--keep-zip] [--dry-run]\n\n" +
+        "                                    [--zip|--no-zip] [--keep-zip] [--dry-run]\n\n" +
+        "传输形态（默认自动判定，见 SKILL.md 硬约束 10）:\n" +
+        "  含子目录结构 或 文件数 >= 5  ->  打成一个 zip 只传一次，手机端解压\n" +
+        "  仅 <5 个平铺文件             ->  逐文件直传\n" +
+        "  --zip 强制打包 / --no-zip 强制逐文件（覆盖上面的判定）\n\n" +
         "示例:\n" +
         "  node scripts/deploy-project.js ./my-project\n" +
         "  node scripts/deploy-project.js ./my-project --name demo --args '{\"count\":3}'\n" +
-        "  node scripts/deploy-project.js ./my-project --zip        # 打包成单个 zip 再传（多文件工程更快）\n" +
+        "  node scripts/deploy-project.js ./my-project --no-zip     # 少数调试场景：坚持逐文件\n" +
         "  node scripts/deploy-project.js ./my-project --zip --keep-zip  # 解压后保留手机上的 zip\n"
     );
     quit(help ? 0 : 1);
@@ -394,12 +410,27 @@ async function main() {
     quit
   );
 
+  /* ---- 下发形态判定（SKILL.md 硬约束 10）----
+   * 规则：**含子目录结构 或 文件数 ≥5** → 整个工程打成一个 zip，只走「一次」PC→手机
+   *       传输，手机端再解压；只有「<5 个且全部平铺」才允许逐文件。
+   * 为什么：逐文件是 N 次往返，小文件多时几乎全是握手开销；打成包只往返一次。
+   * zip === null 表示调用方没指定 → 按上面规则自动判定；--zip / --no-zip 强制覆盖。 */
+  const hasSubdir = files.some((rel) => /[\\/]/.test(rel));
+  const zipReason =
+    zipOpt !== null
+      ? (zipOpt ? "显式 --zip" : "显式 --no-zip")
+      : hasSubdir
+        ? `含子目录结构（${files.length} 个文件）`
+        : (files.length >= 5
+            ? `文件数 ${files.length} ≥ 5`
+            : `仅 ${files.length} 个平铺文件（<5 且无子目录，无需打包）`);
+  const zip = zipOpt !== null ? zipOpt : (hasSubdir || files.length >= 5);
+
   // --dry-run：只打印部署计划，不连手机、不上传（便于预览 / 验证相对结构）
   if (dryRun) {
     process.stdout.write(
-      `部署计划（工程 "${projectName}"，入口 ${mainEntry}，${files.length} 个文件` +
-        (zip ? "，--zip 模式将打包为 1 个 zip 传输" : "") +
-        `）:\n`
+      `部署计划（工程 "${projectName}"，入口 ${mainEntry}，${files.length} 个文件）\n` +
+        `  传输形态：${zip ? "打包为 1 个 zip，手机端解压" : "逐文件直传"}（${zipReason}）\n`
     );
     for (const rel of files) {
       const relPosix = rel.split(path.sep).join("/");

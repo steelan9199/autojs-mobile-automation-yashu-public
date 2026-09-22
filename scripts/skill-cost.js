@@ -33,7 +33,11 @@ const HISTORY_FILE = path.join(__dirname, ".skill-cost-history.jsonl");
 
 // 红线。常驻层用 **token** 计量（「钱」按 token 算，不按字符算）。
 const BUDGET = {
-  perTurnTok: 1500, // 每轮：SKILL.md 全文（≈3300 字符）
+  // 2026-09-22 按用户指示由 2250 上调至 3000 tok，为常驻层留出成长空间。
+  // 沿革：1500 → 2250（容纳硬约束 11「技能自进化」）→ 3000（用户指示）。
+  // ⚠️ 这是连续第二次上调，已知代价：阈值对常驻层膨胀的负反馈被削弱。
+  // 新增内容仍应按「只放漏读即事故的条款、其余下沉 references」执行，不要因为有余量就随意加字。
+  perTurnTok: 3000, // 每轮：SKILL.md 全文（≈6300 字符）
   // 规划层 scan-tasks：**不设红线**（0 = 豁免，仅观测）。
   // 理由（2026-09-17 决策）：模板是沉淀下来的能力，既然建了就有用；数量与 description
   // 会随能力增长自然变长，压 description 会直接伤害「规划阶段靠 description 选模板」的
@@ -127,7 +131,9 @@ function checkRefs(alwaysText) {
   for (const m of new Set([...alwaysText.matchAll(/references\/[^\s`）)、，,|]+?\.md/g)].map((x) => x[0]))) {
     if (!fs.existsSync(path.join(SKILL_DIR, m))) missing.push(m);
   }
-  for (const m of new Set([...alwaysText.matchAll(/scripts\/[^\s`）)、，,|]+?\.js/g)].map((x) => x[0]))) {
+  // 排除 `<name>` 这类占位符路径；`.js` 后必须加右边界，否则 `package.json` 会被非贪婪量词
+  // 截成 `package.js` 而误报断链；同时纳入技能内主力格式 `.cjs`（2026-09-22 修）
+  for (const m of new Set([...alwaysText.matchAll(/scripts\/[^\s`）)、，,|<>\[]+?\.[cm]?js(?![A-Za-z0-9])/g)].map((x) => x[0]))) {
     if (!fs.existsSync(path.join(SKILL_DIR, m))) missing.push(m);
   }
 

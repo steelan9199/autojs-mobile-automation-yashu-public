@@ -1,0 +1,33 @@
+{
+  "abis": [
+    "arm64-v8a"
+  ],
+  "assets": [],
+  "encryptLevel": 0,
+  "useFeatures": [],
+  "launchConfig": {
+    "launcherVisible": true,
+    "runOnBoot": false,
+    "hideLogs": true,
+    "displaySplash": true,
+    "splashText": "TypeSafe 中文文档"
+  },
+  "libs": [],
+  "main": "main.js",
+  "name": "TypeSafe 中文文档",
+  "packageName": "com.musk.typesafedocs",
+  "permissions": [],
+  "signatureScheme": "V1 + V2",
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "ignore": [
+    "/.internal/",
+    "/.data/",
+    "/build/",
+    "/node_modules/",
+    "/out/",
+    "/declarations/",
+    "/autojs6-dts/",
+    "build"
+  ]
+}

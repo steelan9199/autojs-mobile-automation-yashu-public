@@ -121,6 +121,15 @@ typeof 分类（第一轮）：`function` 518 · `object` 97 · 值为 `undefine
 | `util` | `$util` |
 | `web` | `$web` |
 
+> ⚠️ **本表的名字全是「预设全局」——两边的坑都要躲**（均真机实测）
+> ① **别拿它们当自己的变量名**：脚本顶层 `var R = {…}` 赋值会被**静默忽略**（`R` 已是宿主对象），
+>    随后 `R.dirs.push(…)` 抛 `TypeError: push 是 number 而非函数.`，无 try/catch 则脚本在回执前终止；
+> ② **别凭记忆引用宿主对象**：写 `web.jsBridge` 会命中本表的全局 `web`（`$web`，HTTP 模块，**其上没有 `jsBridge`**）
+>    → `TypeError: 无法调用 undefined 的方法 "handle".`，异常被 catch 后只剩 `bridge=off`、**桥静默失效**
+>    （2026-09-22 真机事故：WebView 变量叫 `page`，桥的注册就该写 `page.jsBridge`）。
+>
+> 机制与命名规则见 `AI_AutoJS_编码细则.md` §1.7；现象索引见 `故障速查.md` 第 12、13 条。
+
 **全局函数（206 个）**
 
 `$auto`、`$barcode`、`$jsox`、`$mediainfo`、`$mime`、`$nanoid`、`$notice`、`$ocr`、`$opencc`、`$pinyin`、`$pinyin4j`、`$plugins`、`$qrcode`、`$recorder`、`$selector`、`$shell`、`$shizuku`、`$species`、`$sqlite`、`$sysprops`、`$toast`、`$zip`、`Back`、`Camera`、`Canvas`、`Color`、`Down`、`Home`、`Input`、`KeyCode`、`Left`、`Menu`、`OK`、`Power`、`ResultAdapter`、`Right`、`RootAutomator`、`Screencap`、`SetScreenMetrics`、`Swipe`、`TODO`、`Tap`、`Text`、`Up`、`VolumeDown`、`VolumeUp`、`WebSocket`、`alert`、`auto`、`axios`、`back`、`barcode`、`cX`、`cXy`、`cY`、`cYx`、`captureScreen`、`clearConsole`、`clearImmediate`、`clearInterval`、`clearTimeout`、`confirm`、`crash`、`currentActivity`、`currentComponent`、`currentPackage`、`dayjs`、`err`、`exit`、`findColor`、`findColorEquals`、`findColorInRegion`、`findImage`、`findImageInRegion`、`findMultiColors`、`gesture`、`gestureAsync`、`gestures`、`gesturesAsync`、`getAppName`、`getClip`、`getPackageName`、`getScaleBaseX`、`getScaleBaseY`、`getScaleBases`、`home`、`i18n`、`input`、`isBigInt`、`isDualInstalled`、`isEmptyObject`、`isInstalled`、`isInteger`、`isJavaClass`、`isJavaObject`、`isJavaPackage`、`isNullish`、`isObject`、`isObjectSpecies`、`isPrimitive`、`isReference`、`isRunning`、`isShuttingDown`、`isStopped`、`isUiThread`、`jsox`、`keepAlive`、`kill`、`killDual`、`launch`、`launchApp`、`launchAppDetailsSettings`、`launchConsole`、`launchDual`、`launchDualApp`、`launchDualAppDetailsSettings`、`launchDualPackage`、`launchDualSettings`、`launchPackage`、`launchSettings`、`log`、`loop`、`mediainfo`、`mime`、`nanoid`、`newInjectableWebClient`、`newInjectableWebView`、`newWebSocket`、`notStopped`、`notice`、`notifications`、`ocr`、`open`、`openAppSetting`、`openAppSettings`、`openConsole`、`openDualAppSetting`、`openDualAppSettings`、`opencc`、`pinyin`、`pinyin4j`、`plugins`、`powerDialog`、`press`、`print`、`prompt`、`qrcode`、`quickSettings`、`random`、`randomFloat`、`randomInt`、`rawInput`、`recents`、`recorder`、`requestScreenCapture`、`requestScreenCaptureAsync`、`require`、`requiresApi`、`requiresAutojsVersion`、`sendBroadcast`、`sendEmail`、`sendLocalBroadcastSync`、`setClip`、`setImmediate`、`setInterval`、`setScaleBaseX`、`setScaleBaseY`、`setScaleBases`、`setScreenMetrics`、`setTimeout`、`shell`、`shizuku`、`showConsole`、`sleep`、`species`、`splitScreen`、`sqlite`、`startActivity`、`startDualActivity`、`startService`、`stop`、`swipe`、`sync`、`sysprops`、`toString`、`toast`、`toastError`、`toastInfo`、`toastLog`、`toastVerbose`、`toastWarn`、`toasterror`、`toastinfo`、`toastlog`、`toastverbose`、`toastwarn`、`uninstall`、`uninstallDual`、`unwrapJavaObject`、`verbose`、`wait`、`waitFor`、`waitForActivity`、`waitForPackage`、`warn`、`zip`

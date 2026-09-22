@@ -48,7 +48,7 @@ node scripts/run-task.js open-webview --args '{"url":"http://192.168.0.41:8080",
 node scripts/run-task.js open-webview --args '{"url":"http://192.168.0.41:8080","landscape":true,"keepScreenOn":true,"scriptName":"piano-webview-ui"}'
 ```
 
-> IP 为电脑局域网地址（2026-09-06 实测值），换网络环境后按 `references/获取电脑局域网IP.md` 重新取。
+> IP 为电脑局域网地址（2026-09-06 实测值），换网络环境后用 `node scripts/get-lan-ip.js --first` 重新取。
 >
 > **钢琴网页本地固定路径**：`scripts/webapp/piano/`（`index.html` + `manifest.json` + `samples/` + `启动钢琴服务.bat`）。电脑上双击 `启动钢琴服务.bat`（或 `serve.py`）即可：自动查本机局域网 IP → 放行防火墙 → 起 8080 服务 → 开电脑浏览器；服务跑起来后，手机再用本模板打开 `http://<电脑IP>:8080`。IP 变了不必改模板，先起服务看打印的地址即可。
 

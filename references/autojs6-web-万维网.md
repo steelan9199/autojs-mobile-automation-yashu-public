@@ -155,3 +155,40 @@ webView.setWebViewClient(newInjectableWebClient());
 相当于 `new WebSocket(url)`.
 
 > 参阅: [WebSocket](webSocketType) 章节
+
+---
+
+## 📌 实测补注：`web.jsBridge` 与 `$autojs` 网页 SDK（2026-09-22）
+
+> ⚠️ **以下不是官方文档原文**，是技能实测补注。官方文档（本文件所搬运的版本）**未收录 `jsBridge`**，
+> 但它是 AutoJs6 实际提供的**网页 ↔ 安卓官方桥**，做网页容器时比 `newInjectableWebClient` + 自搓通道更省事。
+
+| 层 | API | 说明 |
+| --- | --- | --- |
+| 网页 → 安卓（请求-响应） | `$autojs.invoke(name, args)` → Promise | 返回值即安卓侧处理函数的返回值 |
+| 网页 → 安卓（单向） | `$autojs.send(name, ...args)` | 不等响应 |
+| 安卓侧注册 | `web.jsBridge.handle(name, (e, args) => 值 / Promise)` / `web.jsBridge.on(name, ...)` | `handle` 为请求-响应，`on` 为监听 |
+| 网页 SDK 注入 | `<script src="autojs://sdk/v1.js"></script>` | 由 AutoJs6 注入，无需本地文件 |
+
+**典型用途：网页里读手机上的本地文件**（`fetch('file://…')` 在 `file://` 页面下必被拦，只能走这座桥）：
+
+```js
+// 安卓侧（Rhino / ES5）
+web.jsBridge.handle('read-doc', function (e, args) {
+  return files.read(files.join(files.path('res/docs'), String(args.slug) + '.md'));
+});
+```
+
+```js
+// 网页侧
+$autojs.invoke('read-doc', { slug: 'intro' }).then(function (md) { /* 渲染 md */ });
+```
+
+⚠️ **互斥（最容易踩）**：`jsBridge` 依赖 AutoJs6 **自带的 WebViewClient**。
+一旦脚本自己 `setWebViewClient(newInjectableWebClient())` 或 `new JavaAdapter(WebViewClient, {...})`，
+**`jsBridge` 立即失效**，只能退回 `prompt` 桥。
+
+**活例子**：`scripts/autojs代码参考例子/autojs-projects/Vue3 + Vant (SFC)/main.js`
+（`web.jsBridge.handle('fetch', …)` 读本地 `.vue` 文件）；反例 `…/vue-app/`（自定义了 WebViewClient，只能用 prompt 桥）。
+
+> 完整的 `file://` 加载能力边界、六条间接方案对照与红线，见 `references/AI_AutoJS_编码细则.md` **§9**。

@@ -1,0 +1,3 @@
+﻿MARK,EXT,EXPECT,NOTE
+CSV,csv,plaintext,逗号分隔数据在打包 APK 里是否为明文
+ROW2,csv,plaintext,第二行用于确认不是巧合

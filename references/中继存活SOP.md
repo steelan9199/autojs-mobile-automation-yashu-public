@@ -49,14 +49,7 @@ netstat -ano | grep 9421     # 有 LISTENING 行 = 端口在监听
 
 症状：手机报 `SocketTimeoutException: fail to connect to 192.168.x.x port 9421 after 10000 毫秒`。
 
-判别顺序：
-
-1. `curl -s http://localhost:9421/health`：
-   - 返回「连接拒绝 / 空」→ **中继死了**，这就是原因，重启即可；
-   - 返回 `status:ok` → 中继活着，继续第 2 步。
-2. `netstat -ano | grep 9421` 看有没有 `0.0.0.0:9421 LISTENING`：
-   - 没有 → 服务没绑定成功/进程已退出，重启；
-   - 有 → 中继在听，问题在网络/防火墙，按 `手机连接排障.md` 排查。
+**判别顺序就是第 2 步的两条**，按上面那张表读即可：先 `curl health`——「连接拒绝 / 空」= 中继死了，这就是原因，重启即可；`status:ok` = 中继活着，继续 `netstat -ano | grep 9421` 看有无 `0.0.0.0:9421 LISTENING`——没有则是服务没绑定成功/进程已退出，重启；有则中继在听，问题在网络/防火墙，走 `手机连接排障.md`。
 
 ### 3.1 变体症状：`phone:connected` 但指令发不过去（客户端假死）
 

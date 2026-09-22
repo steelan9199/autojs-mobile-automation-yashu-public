@@ -1,35 +1,25 @@
 ---
 name: AI_AutoJS编码强制规范
-description: 编写 AutoJS(AutoJs6/Rhino) 手机端 JS 脚本必须遵守的底层编码规则核心篇——默认 ES5 风格(实测放行清单见 §1.0)、UI 线程禁止 sleep/耗时、耗时 API 必须 threads.start 多线程、UI 模式首行指令、回执规范、编码前自检清单。写任何手机端 JS 前必读本文件；UI/悬浮窗 XML 另见 AutoJS6_UI界面与悬浮窗XML指南.md；细则见同目录 AI_AutoJS_编码细则.md。
+description: 编写 AutoJS(AutoJs6/Rhino) 手机端 JS 必须遵守的底层编码规则核心篇——默认 ES5(§1.0)、npm/内置模块可用性(§1.8)、UI 线程零阻塞、UI 模式首行指令、异步回调时序(§2.7)、回执规范、文件拆分与上下文成本(§4)、自检清单。写任何手机端 JS 前必读；UI/悬浮窗 XML 见 AutoJS6_UI界面与悬浮窗XML指南.md；细则见 AI_AutoJS_编码细则.md。
 ---
 
 # AutoJS 代码编写强制规范（AI 必读 · 核心篇）
 
-> **写或改任何手机端 JS 之前只读本文件**（约 6KB），它含：默认脚本目录、三条铁律、ES5 边界、循环与数组、
-> UI 模式首行指令、主线程禁止清单、子线程、回执规范、编码前自检清单 —— 覆盖绝大多数正确性要求。
+> **写/改任何手机端 JS 之前只读本文件**：默认脚本目录、三条铁律、ES5 边界、循环与数组、UI 模式首行指令、
+> 主线程禁止清单、子线程、回执规范、**文件拆分原则（§4，新建工程前必读）**、编码前自检清单 —— 覆盖绝大多数正确性要求。
+> **适用范围**：所有下发到手机 AutoJs6（Rhino）执行的 JS —— 现场脚本 `temp/`、模板 `tasks/<name>/`、常驻客户端 `autojs-task-phone-client.js`。
+> **细则另见 `AI_AutoJS_编码细则.md`**（按需 Grep 局部读，别通读；症状→小节见文末速查表），常查：
+> 1.3 数字溢出 · 1.5 渐变着色器 · 1.6 canvas 每帧清屏 · 1.7 顶层变量名/预设全局名（`R`/`L`、`web`） · 1.7.1 files 缺方法 ·
+> 2.1 UI 主线程定义 · 2.3.1 `__spawnSub` · 2.4 `ui.run`/`ui.post` · 2.4.1 悬浮窗主线程 · 2.5 子线程异常不冒泡 ·
+> 2.6 可运行样例 · **2.7 异步回调只在主线程让出时执行** · 3.1 静默崩溃定位 · 4 其他高频坑 · 6 构造 java 类型 ·
+> 7 npm 包与内置模块实测 · 8 ES6 全谱。
 >
-> **细则另见 `AI_AutoJS_编码细则.md`**（约 14KB），只在**命中具体报错 / 做悬浮窗与 ui 交互 / 查静默崩溃**时按需读那一段，
-> 不必通读：1.3 数字溢出 · 1.5 渐变着色器 · 1.6 canvas 每帧清屏 · 1.7 顶层变量名 R/L · 1.7.1 files 缺方法 ·
-> 2.1 UI 主线程定义 · 2.3.1 `__spawnSub` 独立引擎 · 2.4 `ui.run`/`ui.post` · 2.4.1 悬浮窗主线程 ·
-> 2.5 子线程异常不冒泡 · 2.6 可运行样例 · 3.1 静默崩溃定位手法 · 4 其他高频坑 · 6 构造 java 类型。
+> 这些规则不是"最佳实践"，是**硬约束**。违反后往往不立刻报错，而是脚本静默崩溃（回执为空）、
+> UI 卡死（点不动也关不掉）、任务单收不到回执（等超时或被心跳判失败）—— 排错极难，**宁可写之前读完，也不要写完靠试错**。
 
-# AutoJS 代码编写强制规范（AI 必读）
+## 默认脚本目录
 
-> **适用范围**：所有要下发到手机 AutoJs6（Rhino 引擎）执行的 JS 脚本——
-> 一次性现场脚本 `temp/`、可复用模板 `tasks/<name>/`、常驻客户端 `autojs-task-phone-client.js`。
->
-> 这些规则不是"最佳实践"，是**硬约束**。违反后往往不是立刻报错，而是：
-> 脚本静默崩溃（回执为空）、UI 卡死（点不动也关不掉）、任务单收不到回执（等待超时或被心跳判失败）。
-> 排错极难，**所以宁可写之前读完本篇，也不要写完靠试错**。
-
-## AutoJS在安卓手机上的默认脚本文件夹
-
-```js
-var sdcardPath = files.getSdcardPath();
-log("sdcardPath", sdcardPath); // sdcardPath /storage/emulated/0
-var autojs脚本文件夹 = files.join(sdcardPath, "脚本");
-log(autojs脚本文件夹); // /storage/emulated/0/脚本
-```
+`files.join(files.getSdcardPath(), "脚本")` → `/storage/emulated/0/脚本`（用 API 拼，勿写死路径）。
 
 ---
 
@@ -46,31 +36,39 @@ log(autojs脚本文件夹); // /storage/emulated/0/脚本
 AutoJs6 用的是 **Rhino** JS 引擎，对 ES6+ 支持不完整、且各版本/机型参差。**默认按 ES5 写**；
 本节 §1.0 列出了实测放行的 ES6 特性，未列出的仍视为不可用。
 
-### 1.0 ES6 语法使用边界（2026-09-17 实测更新）
+### 1.0 ES6 语法使用边界（2026-09-17 首测 / 2026-09-22 全谱普查修正）
 
-AutoJs6 的 Rhino 引擎**实测支持下列 ES6 语法**（2026-09-17 真机，1440×3200 / density 3.5，
-用 `eval` 隔离探测，全部 `OK`）：
+真机实测 **62 项语法 + 66 项内置 API**（`eval` 与 `require` 双路径结论一致）；明细见细则 §8：
 
-| 特性 | 实测 | 备注 |
-| --- | --- | --- |
-| 模板字符串 `` `a${n}b` ``（含多行） | ✅ `a2b` / 长度 11 | 反引号可用 |
-| `let` / `const` | ✅ | |
-| 箭头函数 `(x) => x+1` | ✅ | |
-| 数组展开 `[...a, 3]` | ✅ | |
-| `?.` 可选链 | ✅ | 更早实测 |
-| `textMatch()`（正则字面量） | ✅ | 旧名 `textMatches` 已弃用 |
+| 特性 | 实测 |
+| --- | --- |
+| 模板串（含标签）、`let`/`const`、解构全套、默认参数、rest 形参 `f(...a)`、对象简写/方法简写/计算名/getter、箭头（单参/默认参数/词法 this）、`function*`+`yield`、`for (var\|let x of/in …)` | ✅ |
+| `[...a]`·`{...a}`·`?.`·`??`·`\|\|=`·`**`·`0b`/`0o`·`\u{…}`·`1_000`·`1n`·尾逗号；内置对象（Map·Set·Proxy·Reflect·Promise·Symbol·TypedArray）与 `Object`/`Array`/`String`/`Math`/`Number` 新方法 | ✅ 仅 `Intl`、`WeakRef` 缺失 |
+| `for (const x of …)` / `for (const k in …)` | ❌ 语法错误 → 把 `const` 换 `var`/`let` 即可 |
+| 调用处展开 `f(...arr)` / `new A(...arr)` | ❌ 语法错误 → 改用 `f.apply(null, arr)` |
+| 对象 rest `var {a, ...z} = o` | ❌ `object rest` → 改用 `Object.assign` |
+| `class` 全套（声明/表达式/extends/super/static/getter/计算名） | ❌ `标志符使用了保留关键字: class` → 用 `function` + 原型 |
+| `async`/`await`、箭头 rest 形参、`import`/`export`、`new.target` | ❌ → 多线程用 `threads.start`，模块用 `require` |
 
-**政策**：仍**默认写 ES5 风格**（`var` + `function`）——理由是用户群设备与 AutoJs6 版本参差，
-本机支持不代表别人支持；但**上表特性已被实测放行，用到时不必再自我怀疑，也不必退化成 ES5**。
-尚未验证的特性（解构、class、Promise/async、for...of 等）**仍按禁用处理**，别凭主观判断引入。
+> ⚠️ **两个静默语义坑（比语法报错更危险，实测确认）**：
+> 1. `const` 重新赋值**既不报错也不生效**（`const a=1; a=2;` 后 `a` 仍是 `1`，无异常）——别指望它拦错，变量仍写 `var`；
+> 2. `let` 在 `for` 循环里**没有每轮独立绑定**（`for (let i…)` 内建的闭包全部捕获同一个 `i`，实测取到终值）——循环里建闭包必须用 IIFE。
+
+**政策**：仍**默认写 ES5**（`var` + `function`）——设备与版本参差，本机支持不代表别人支持；但 ✅ 行已实测放行，不必自我怀疑也不必退化；表外特性仍按禁用处理。
 
 > **例外场景仍强制 ES5**：多文件工程里被 `require` 的模块——`require` 解析遇 ES6 语法会抛错且
 > 不触发 `events.on("exit")`，表现为静默失败（见 `references/部署真实工程.md` 规范 1）。
 
 ### 1.4 循环与数组
 
-- 用传统 `for (var i = 0; i < n; i++) {}`，不用 `for...of` / `forEach` 链式（避免 `this` 与兼容问题）。
+- 优先传统 `for (var i = 0; i < n; i++) {}`；`for...of` 本身可用，但**头部不能写 `const`**（用 `var`/`let`，见 §1.0）；不用 `forEach` 链式（`this` 与兼容问题）。
 - 如果要建 Java 原生数组， 用 `util.java.array("int", N)` / `util.java.array("float", N)`，不要 `new Array(N)`（那是 JS 数组，喂给 native API 会类型错）。
+
+### 1.8 第三方库 / npm 包：**能用，但不能"装"**（2026-09-22 实测，完整数据见细则 §7）
+
+- 设备**无 node/npm**，只能 PC 装好推包；⛔ `require('fs'/'path'/'os'/'process'/'buffer'/'nodejs')` **全 `Module not found`**（文档称支持，实测+源码均不成立，见 §7.8）；`events` **返回的是全局 `events`**（AutoJs6 EventEmitter，无 Node 的 `EventEmitter`/`off`）；`lodash` 只是 **lodash.core 子集**（无 `chunk`/`template`/`debounce`/`cloneDeep`）。文件 `files`、网络 `$http`、事件 `events`、HTML 解析 **`cheerio`**（§7.9/§7.10）。
+- `require` 支持 node_modules（相对/绝对、裸名从 cwd **向上**搜、`main`/`index.js` 兜底），⛔ 但**无嵌套 node_modules → 依赖须拍平**；⛔ 包内含 `class`/`async`/箭头 rest/`for (const x of …)`/调用处 `f(...a)`/对象 rest 即语法错误（`left-pad`✅、`ansi-styles`❌ 实证）。
+- 选包先筛：`grep -nE "\bclass\b|async |=> *\(\.\.\.|for *\(const .* of " <包目录>/*.js`；命中即降级老版本，或走**打包链路**（打包器本身不产 ES5，须再 babel 降级 + 环境 shim，见 §7.7）。
 
 ---
 
@@ -80,45 +78,14 @@ AutoJs6 的 Rhino 引擎**实测支持下列 ES6 语法**（2026-09-17 真机，
 
 ### 2.0 UI 模式指令必须在文件第一行（结构性重大坑，2026-09-06 真机实测；单双引号均可）
 
-AutoJs6 **只认文件第一个语句**的 UI 模式指令来启用 UI 模式；引号写法**单引号 `'ui';` 与双引号 `"ui";` 均可**（2026-09-08 真机实测）。而**走「注入 prologue」的两条路径**（工程 `runProject`、`__spawnSub` 拉子脚本），客户端会先拼入引导代码（`__TASK_ID` / `__TASK_ARGS_PATH` / 进度上报，见 `autojs-task-phone-client.js` 的 `buildTaskPrologue`）——**指令一旦被挤到第二行，UI 模式静默失效**：
-
-- 表现：`activity is not defined`、`ui.layout()` 报错、View 操作抛线程异常——**几乎整个脚本崩溃**，不是局部功能失效；
-- 更阴险的是不报 `'ui'` 相关错误，报的是下游症状（如 `activity 未定义`），极易误判成 API 用法问题。
-
-> ⚠️ **UI 模式指令（`'ui';` 或 `"ui";` 均可）必须是文件的第 1 个字符——注释也不能挡在它前面。** 文件头注释块、BOM、空行、`//` 注释，只要占了指令之前的位置，UI 模式一律不启用。**注释只能写在指令之后**：
->
-> ```js
-> 'ui';            // ✅ 第 1 行就是它，注释紧跟其后，OK
-> "ui";            // ✅ 双引号写法同样支持（2026-09-08 实测）
-> /* 任何说明注释都放这里 */
->
-> /* 顶部注释块 */  // ❌ 注释占了第 1 行 → UI 模式指令落到第 2 行 → 失效
-> 'ui';
-> ```
->
-> 2026-09-06 真机踩坑实录：验证脚本把注释块写在最前、`'ui';` 落到第 8 行，导致 UI 模式静默失效，被误判成「客户端自动提行修复没生效」，改正则、重推客户端绕了一大圈。**结论：写任何 UI 脚本，第一个字符就写 UI 模式指令（`'ui';` 或 `"ui";`），其余全部往后放。**
+`'ui';` 与 `"ui";` 均可，但**必须是文件第 1 个字符——注释、BOM、空行挡在前面都会静默失效**
+（真机踩坑：注释块占首行、`'ui';` 落到第 8 行）。注释只能写在指令**之后**：`'ui'; // ✅` ／ `/* 说明 */` 换行 `'ui'; // ❌`。
+失效表现**不是**报 `'ui'` 相关错误，而是下游症状：`activity is not defined`、`ui.layout()` 报错、View 操作抛线程异常——**几乎整个脚本崩溃**，极易误判成 API 用法问题。
 
 **处置：**
-
-1. **单文件直接下发即可**（2026-09-17 真机复测）：`runScript` 路径落到 `engines.execScriptFile`，**原样执行、不注入任何前缀**——首行 `"ui";` 的脚本直接下发，`ui.layout` 正常、Activity 正常起来（回执 `ok:1`）。
-   > 曾于同日据一条报错误记「直接下发必失败、只能走启动器」——**错**。那次真因就是上一节那条：**指令不在第一个字符**（首行写成了注释）。
-2. **注入路径会自动把指令提回第一行**（2026-09-06 起）：客户端检测脚本是否以 UI 模式指令（`'ui';` / `"ui";`）开头，是则剥离并拼到 prologue 之前。注意其匹配正则 `/^[ \t]*('ui'|"ui")[ \t]*;?/` **只认文件最开头的引号**，注释挡前面照样匹配不上。
-3. **需要启动器模式的场景**：要在运行时拼装/生成 UI 源码（如 `qiu-calib` 类动态面板），或需要在独立引擎里跑 UI 脚本。网页容器类直接用 `tasks/open-webview/` 模板。**常规静态 UI 脚本不必绕这一圈。**
-
-```js
-// 启动器骨架（经中继下发，本身不带 ui 模式指令）：
-var L = [];
-L.push("'ui';");                      // ← 落盘脚本的第一行，一个字符都不能挡在前面（'ui'; 与 "ui"; 均可）
-L.push("try {");
-L.push("    ui.layout(...);");        // 或 activity.setContentView(...) 等 UI 操作
-L.push("} catch (e) {");
-L.push('    toast("启动失败: " + e);');
-L.push("}");
-var path = files.join(files.join(files.getSdcardPath(), "脚本"), "my-ui.js");
-files.ensureDir(path);
-files.write(path, L.join("\n"));
-var exec = engines.execScriptFile(path);
-```
+1. **单文件直接下发即可**（2026-09-17 真机复测）：`runScript` → `engines.execScriptFile`，**原样执行、不注入前缀**，首行 `"ui";` 正常起 Activity（回执 `ok:1`）。
+2. **注入路径会自动把指令提回第一行**：客户端检测脚本开头是否为 UI 指令，是则剥离并拼到 prologue 之前；其正则 `/^[ \t]*('ui'|"ui")[ \t]*;?/` **只认文件最开头的引号**，注释挡前面照样匹配不上。
+3. **需要启动器模式的场景**：运行时拼装/生成 UI 源码（如 `qiu-calib` 类动态面板）、或独立引擎里跑 UI 脚本；网页容器类直接用 `tasks/open-webview/` 模板。**常规静态 UI 脚本不必绕这一圈**——落盘脚本第一行写 `'ui';` 再 `engines.execScriptFile` 即可（骨架与细节见细则 §2.0）。
 
 ### 2.2 主线程【禁止】清单
 
@@ -135,27 +102,27 @@ var exec = engines.execScriptFile(path);
 ### 2.3 耗时 / 延迟 API 必须进子线程 `threads.start`
 
 ```js
-// ✅ 正确：把耗时逻辑放进 threads.start 子线程
-threads.start(function () {
+threads.start(function () {                 // ✅ 耗时逻辑全进子线程
   try {
-    var r = http.get("https://example.com/api");
-    var data = r.body.json();
-    // 子线程里拿到结果后，要改 UI 必须切回 UI 线程（见 2.4）
-    ui.run(function () {
-      ui.textViewResult.setText(data.msg);
-    });
+    var data = http.get("https://example.com/api").body.json();
+    ui.run(function () { ui.textViewResult.setText(data.msg); });   // 改 UI 必须切回 UI 线程（见 2.4）
   } catch (e) {
-    ui.run(function () {
-      ui.textViewResult.setText("请求失败: " + e);
-    });
+    ui.run(function () { ui.textViewResult.setText("请求失败: " + e); });
   }
 });
-
 // 主线程继续走，UI 不卡
 ```
 
-> 小提示：`ui.layout()` 之后虽然主线程不退出，但**主线程本身不能干重活**。
-> 真正"挂住"界面的是 `ui.layout` 后的事件循环，不是 `sleep` 之类。
+### 2.7 ⭐ 异步回调只在主线程让出时执行（含非 UI 脚本，2026-09-22 实测）
+
+脚本 = **单线程 + 消息队列**：主体运行期间 `setTimeout` / `Promise.then` / `events.broadcast` 投递**一律排队不执行**
+（`sleep` 阻塞期间同样不执行），必须让主线程让出或脚本结束才跑。
+
+- **别用「阻塞 sleep + 检查回调」验异步**（一定拿不到值）；异步断言写进让出后的回调，并在回调里重写回执。
+- **同引擎事件总线用 `events.on` + `events.emit`（同步、立即回调）**；`events.broadcast` 是异步投递**只用于跨引擎**
+  （如给客户端回执 `autojs_result`）。两者都**没有 `off`**，注销用 `removeListener`。
+- **⛔ 禁用 `Promise.prototype.wait()` / `.await()`**：实测主线程与子线程**永久挂起** → 脚本不退出、永远无回执，只能强杀。
+- 挂死救命手段：数据**先 `files.write` 落盘**，再用 `temp/autojs-npm-probe/read-phone-file.js` 读回（详解细则 §2.7）。
 
 ## 3. 回执规范（建好即回执，简引）
 
@@ -165,26 +132,78 @@ threads.start(function () {
 - **UI / 常驻类**（窗口不关就不 exit）：`ui.layout()` 成功后**立即同步** `sendResult`，`events.on("exit")` 仅作兜底。
 - 回执极简：`{ok:1}` 或 `{ok:0, err:"原因"}`，不要回传大段文本 / 整棵 UI 树。
 
+## 4. 文件拆分与上下文成本（AI 维护优先）
+
+**判据一句话：拆分的收益不是减小运行体积，而是减小「改代码时读进来的量」。**
+
+本节是**面向 AI 维护**的文件组织约定，不是性能优化：手机端跑的还是同一份代码、体积一分不少。
+省下的是每次改动时 AI 必须读进上下文的行数——**算力很贵，所以这是成本问题，不是风格问题**。
+
+### 4.1 为什么必须拆
+
+改一处逻辑得先读整个文件：1000 行的文件里改 20 行 = 每次掏 1000 行的上下文。
+拆成 6 个 150～250 行的文件后，同一个改动只掏 1 个文件。改动次数一多，差距是数量级。
+
+### 4.2 拆谁（优先级）
+
+1. **AI 会反复改的业务逻辑**（路由 / 交互 / 装载 / 链接处理）—— 收益最高，先拆。
+2. **单文件超过 400 行的自有代码** —— 过线就拆，别等"以后再说"。
+3. **不拆**：第三方依赖（`node_modules` / 内置库 / 下载来的 `vendor/*`）与**构建产物**
+   （内联后的 html、生成的 data.js）—— 前者读一次就够，后者根本不该手改。
+
+### 4.3 怎么拆（不许破坏宿主约束）
+
+| 类型 | 拆法 |
+| --- | --- |
+| 手机端脚本（入口 `main.js` + `modules/`） | 直接 `require('./modules/x')` 拆模块 —— AutoJS 工程原生支持相对 require；**打包 APK 后 `.js` 被加密也照常 require**（AutoJS 自解密，见 `AI_AutoJS_编码细则.md` §10 / `部署真实工程.md`）。⚠️ 相对基准是**被加载模块自身所在目录**，不是工程根：`libs/x.js` 里要回工程根得写 `require('../libs/y')` |
+| 内联进 html 的浏览器资产（js / css） | ⛔ **不许**在 html 里外链 `.js`：打包后 `.js` 是密文、WebView 不解密 ⇒ 断网/打包双场景都可能白屏，而开发态中继下**完全正常**（最易漏测的一类）。只能走「源码分块 → 构建期拼接 → 内联」。⚠️ CSS 不受此限（明文），但为一致性仍建议同法处理 |
+| Node 侧工具（`tools/*.cjs`） | 直接 `require` 拆子模块，零风险 |
+
+> 一句话记法：**能 `require` 就 `require`；要靠 html 加载的，只能拼接。**
+
+### 4.4 粒度与命名
+
+- 单块 **150～300 行**；超过 400 行再拆，**少于 80 行别拆** —— 碎片化比大文件更贵，每个文件都要读一遍头注释。
+- 文件名写**职责**（`links.js` / `router.js`），不写序号；需要固定拼接顺序时用数字前缀（`10-` `20-`）。
+- 每块头部 2～4 行写清「负责什么、依赖谁」，让 AI 只读它就能上手。
+
+### 4.5 拆完必须验证
+
+拆分改的是**文件边界**，最典型的翻车是「拼接顺序」「作用域」「闭包变量」三件事。
+拆完**必须重跑该工程的构建与全部门禁**（语法体检 + 自检用例），真机验证过才算拆完。
+
+### 4.6 什么时候不拆
+
+- 一次性 / 现场脚本（`temp/`）：拆的收益抵不上多文件本身的成本。
+- 本来就不大（< 300 行）：别为规则而拆。
+- 已稳定、AI 基本不会再动的老代码：拆它是净负债（多一次回归风险，零阅读收益）。
+
 ## 5. 编码前自检清单（逐条勾）
 
 写任何手机端 JS 脚本前，对照打勾：
 
 - [ ] 所有变量用 `var`，**无** `let` / `const`；
-- [ ] 未在 §1.0 放行清单里的 ES6 未使用（解构 / `for...of` / `class` / `Promise` / `async` / `await` 仍禁用）；放行的（模板字符串、`let/const`、箭头、展开、`?.`）用了也无妨，但**被 `require` 的工程模块必须纯 ES5**；
+- [ ] 未使用 §1.0 的 ❌ 清单项（逐条照 §1.0 表格核）；✅ 清单项可放心用，但**被 `require` 的工程模块与第三方包仍强制纯 ES5**；
+- [ ] 没把 `const` 当保护伞（重赋值静默不生效）、没在 `for` 循环里用 `let` 建闭包（无每轮独立绑定，需 IIFE，见 §1.0 静默坑）；
+- [ ] 若用第三方 / npm 包：已确认包内无 `for...of`·`class`·`async`·箭头 rest 形参，且依赖已拍平到同一层 `node_modules`（见 §1.8）；
 - [ ] 颜色一律走 `colors.WHITE / colors.rgb / colors.argb`，**未**直接写 `0xRRGGBB` 字面量；
 - [ ] 渐变着色器（RadialGradient / SweepGradient / ComposeShader）颜色走 `int[]` 多色构造 + `& 0xffffffff`，**未**直接传 `int`/`long` 单色值（避免 Rhino 误用 long 颜色构造 → `Invalid ID [0..16)`）；
 - [ ] `TileMode` / `PorterDuff.Mode` 用 `Class.forName + java.lang.Enum.valueOf` 取真实枚举，**未**直接 `Shader.TileMode.CLAMP` 字段访问；
 - [ ] Java 原生数组用 `util.java.array(...)` 创建，非 `new Array`；
 - [ ] 若是 UI 脚本：主线程**无** `sleep` / `http` / 大 I/O / 密集循环；
-- [ ] 若是 UI 脚本：UI 模式指令（`'ui';` 或 `"ui";`）是落盘文件**第 1 个字符**，注释/说明全放它后面（经中继下发走启动器落盘 + `execScriptFile` 模式，或直接用 `open-webview` 模板）；
+- [ ] 若是 UI 脚本：UI 模式指令（`'ui';` 或 `"ui";`）是落盘文件**第 1 个字符**，注释/说明全放它后面；
 - [ ] 主体逻辑包 try-catch，catch 里给 result 赋 `{ok:0, err}`——**错误也必须回传电脑**，吞异常等于静默失败；
 - [ ] 有耗时则已用 `threads.start` 包裹，且改 UI 用 `ui.run` / `ui.post` 切回；
 - [ ] 子线程内部有独立 `try/catch`；
 - [ ] 回执正确：UI/常驻类已「建好即回执」，`events.on("exit")` 作兜底；
-- [ ] **顶层变量名未使用 `R` / `L`**（AutoJS6 内置全局名，赋值静默失败 → 直接导致无回执崩溃）；
+- [ ] **顶层变量名未使用预设全局名**（`R`/`L` 赋值静默失败），且引用宿主对象前已确认变量名与来源——**别凭记忆写全局名**：`web.jsBridge` 会命中全局 `web`（HTTP 模块，无 `jsBridge`）→ 报「无法调用 undefined 的方法 "handle"」、桥静默失效，应为 `page.jsBridge`。细则 §1.7；
 - [ ] 文件大小 / 修改时间用 `java.io.File.length()` / `.lastModified()`，**未**用不存在的 `files.getLength` / `files.getLastModified` / `files.size`；
 - [ ] 截图类脚本已内置权限前置代码；
 - [ ] 参数从注入的 `__TASK_ARGS_PATH` 读取，未写死。
+- [ ] 若是**新建工程**、或自有代码单文件已 > 400 行：已按 **§4** 拆块——拆的是"读进来的量"，
+      **依赖与构建产物一律不拆**；拆法与宿主约束对齐（能 `require` 就 `require`，要靠 html 加载的只能拼接内联）；
+
+- [ ] 异步相关：**未**用「阻塞 sleep + 检查回调」验异步；**未**使用 `Promise.wait()` / `.await()`（会永久挂起）；同引擎事件用 `events.on`+`emit` 而非 `broadcast`（见 §2.7）；
 
 > 任一勾选项不达标，下发前必须改。宁可多花 1 分钟自查，省下 30 分钟排"为什么没回执"。
 
@@ -196,11 +215,17 @@ threads.start(function () {
 | 渐变着色器异常 | 1.5 |
 | canvas 画面滞后、冻结 | 1.6 |
 | 脚本静默失败、报 `push 是 number 而非函数` | 1.7 |
+| 报「无法调用 undefined 的方法 "handle"」/ `jsBridge` 静默失效 | 1.7 |
 | 取文件大小 / 修改时间报「无法找到函数」 | 1.7.1 |
 | 分不清哪些代码在 UI 线程上跑 | 2.1、2.4.1 |
 | 需要独立引擎跑子脚本（自动打标、避免串号） | 2.3.1 |
 | 子线程里改 UI 用什么 | 2.4 |
 | 子线程报错没冒泡出来 | 2.5 |
 | 中继只报「引擎已退出但未收到回执」 | 3.1 |
+| 要用 npm 包 / 模块找不到 / cheerio 解析 HTML | 7、7.9、7.10 |
+| 回调不执行（计时器 / `Promise.then` / `broadcast`） | 2.7 |
+| `Promise.wait()`/`.await()` 卡死、脚本不退出且无回执 | 2.7 |
+| 现代 npm 包语法过不去，要打包成单文件 | 7.7 |
+| 查某个 ES6/ES2017+ 特性、内置对象能不能用 | 8 |
 | 其他零散坑 / 构造 java 类型数据 | 4、6 |
 

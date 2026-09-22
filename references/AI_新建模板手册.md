@@ -2,7 +2,7 @@
 
 > **读者：AI 本人。** 当你接到「新建/加一个手机任务模板」「做个 XX 模板」「以后这类操作能不能沉淀成模板」类需求时，读本文档，照步骤建。
 > 本文档 = **决策流程 + 分类骨架 + 核心规范 + 自检清单 + 探测家族对照表**，一册搞定，照抄即可扩展。
-> 配套参考：`references/AutoJs6_Engines_引擎文档.md`（engines 引擎模块 API）；`references/获取电脑局域网IP.md`（取局域网 IP）。
+> 配套参考：`references/AutoJs6_Engines_引擎文档.md`（engines 引擎模块 API）；取局域网 IP 见 `references/手机连接排障.md` 第 1 步。
 
 关键事实先说清：
 - 加一个模板 = 建一个文件夹（`tasks/<name>/`，内含 `<name>.js` + `TASK.md`），**不需要手动登记**——`scripts/scan-tasks.js` 会自动扫描发现。
@@ -46,8 +46,6 @@
 | 类别 | 干什么 | 代表模板 | 回执风格 |
 |---|---|---|---|
 | **探测类** | 给定位依据 → 回传控件信息 + 稳定选择器，**不操作界面** | `inspect_control_by_*` | `{ok, count, control, selectors}`（见 §7） |
-| **交互类** | 在 UI 树找控件然后**操作**它 | `tap-text` / `tap-point` / `input-text` / `key` / `open-app` | `{ok:1}` 或加少量数据（如 `open-app` 回包名） |
-| **手势类** | 坐标/手势驱动，不依赖控件树 | `swipe` | `{ok:1}` |
 | **交互类** | 在 UI 树找控件然后**操作**它 | `tap-text` / `tap-point` / `input-text` / `key` / `open-app` | `{ok:1}` 或加少量数据（如 `open-app` 回包名） |
 | **手势类** | 坐标/手势驱动，不依赖控件树 | `swipe` | `{ok:1}` |
 | **流程控制类** | 等待 / 开 App / 系统按键，串联步骤用 | `wait` | `{ok:1}` |
@@ -173,12 +171,12 @@ events.on("exit", function () {
 
 ## 3. 命名约定
 
-- 文件夹名 = 模板名（全小写、下划线分词，如 `tap-text` / `swipe` / `inspect-control-by-coord`）；脚本文件名与文件夹同名。
+- 文件夹名 = 模板名（全小写、**中划线 kebab-case** 分词，如 `tap-text` / `swipe` / `inspect-control-by-coord`）；脚本文件名与文件夹同名。
 - **动词_维度** 套路：动作在前、定位维度在后。
   - 交互：`tap-text`（按文字点）、`tap-point`（按坐标点）、`input-text`（写文字）
   - 探测：`inspect-control-by-coord` / `by_text` / `by_id` / `by_bounds` / `by_bounds_inside` / `by_bounds_contains` —— `_by_xxx` 后缀统一表示「用什么方式定位」，新增变体顺着走。
-- AI 下发时传 `path: "tasks/<模板名>/<模板名>.js"`，手机端从中继 `GET /probe/tasks/<模板名>/<模板名>.js` 实时下载执行。
-- `TASK.md` 由 AI 在 PC 端读取，**绝不**发到手机。
+
+> 下发路径、手机端落点等细节见 §5.1。
 
 ---
 
@@ -203,9 +201,10 @@ scripts/tasks/<模板名>/
   TASK.md         # 说明书（AI 端决策辅助，手机端永不下载）
 ```
 
-- 文件夹名 = 模板名（全小写、中划线分词 kebab-case，如 `tap-text`）；脚本文件名与文件夹同名。
 - AI 下发时传 `path: "tasks/<模板名>/<模板名>.js"`，手机端从中继 `GET /probe/tasks/<模板名>/<模板名>.js` 实时下载执行，写到 AutoJS 默认脚本文件夹 `/sdcard/脚本/<模板名>.js`（同名覆盖，改了立刻生效）。脚本仍只存 PC 这一份为权威源，手机端文件由中继每次运行时刷新，无需手动维护。
 - `TASK.md` 由 AI 在 PC 端读取，**绝不**发到手机。
+
+> 命名规则（含 kebab-case 与 `_by_xxx` 套路）见 §3，本节不重复。
 
 ### 5.2 TASK.md 结构与两级读取
 
@@ -334,16 +333,15 @@ AI 读完 TASK.md 后可能判断模板脚本要为本次任务调整。规范�
 
 ## 6. 自检清单（提交前过一遍）
 
+**编码层**（`var` only / 无 `let·const·=>` / 从 `__TASK_ARGS_PATH` 读参 / 标准 `events.on("exit")` 回执 / UI·常驻类建好即回执 / 回执字段精简）**逐条照 `AI_AutoJS编码强制规范.md` §5 清单核，此处不重复**。
+
+以下是**模板专属**项：
+
 - [ ] **决策正确**：命中 §1.1 信号，不是偶发/红线/现有模板能覆盖的（对照 §1.3 决策树）
 - [ ] **分类正确**：选对 §2 四类之一，回执风格与该类别一致
-- [ ] 有独立文件夹 `tasks/<name>/`，内含 `<name>.js` + `TASK.md`
-- [ ] TASK.md 前言有 name / description / args 三项
+- [ ] 有独立文件夹 `tasks/<name>/`，内含 `<name>.js` + `TASK.md`；命名符合 §3
+- [ ] TASK.md 前言有 name / description / args 三项，且正文含场景/什么时候不该用/参数坑/错误兜底/示例
 - [ ] `node scripts/scan-tasks.js` 能输出本模板的 name+description
-- [ ] 全文只有 `var`，没有 `let/const/=>`
-- [ ] 参数从注入的 __TASK_ARGS_PATH 读，必填缺失有明确 err
-- [ ] 收尾是标准 `events.on("exit", ...)` 回执模板
-- [ ] 若为 UI / 常驻类（ui.layout 弹窗、脚本不退出）：已用「建好即回执」——exit 监听提到最前兜底 + ui.layout 成功后同步广播，而非纯靠 exit
-- [ ] 成功回执不含大字段，失败 err 是人话
 - [ ] 若属探测类：已按 §7 统一回执 + 挑选规则；若新增 inspect_control 变体，已更新 §7 对照表与兄弟反向指引
 
 ---
@@ -383,8 +381,7 @@ AI 读完 TASK.md 后可能判断模板脚本要为本次任务调整。规范�
 2. **精确命中的优先**于模糊命中；
 3. 同层内先 **可见（visibleToUser）优先** 于不可见，再 **包围盒最小（最深层 / 最具体）优先** 于大容器。
 
-> 几何类（`by_bounds_inside` / `by_bounds_contains`）通常一次命中多个，`count` 常 >1。**默认只回最佳一个以省 token**；`returnAll: true` 时额外回 `controls` 数组——区域中最对口的 ≤10 个控件（**封顶 10，绝不 dump 全量**），每个元素为 `{control, selectors}`。`count` 永远报告区域真实总数，被截断时 AI 一眼可见（`count > controls.length` 即被截断）。
-> 排序（挑最对口）：**选择器可用性优先 有 id > 有 text > 有 desc > clickable**，同层内 可见 > 最深层 破平。
+> 几何类（`by_bounds_inside` / `by_bounds_contains`）通常一次命中多个，`count` 常 >1。**默认只回最佳一个以省 token**；`returnAll: true` 时额外回 `controls` 数组——区域中最对口的 ≤10 个控件（**封顶 10，绝不 dump 全量**），每个元素为 `{control, selectors}`。`count` 永远报告区域真实总数，被截断时 AI 一眼可见（`count > controls.length` 即被截断）；`controls` 内部排序沿用上面同一套规则。
 
 ### 7.4 扩展新变体的照抄要点
 
@@ -401,9 +398,7 @@ AI 读完 TASK.md 后可能判断模板脚本要为本次任务调整。规范�
 
 设计取舍：
 - 参数：`x, y`（坐标）。
-- 输出：`control`（最深层控件的 7 个特征）+ `selectors`（id/text/desc 三类定位选择器，带 `.visibleToUser(true)`）。
-- **刻意不回传 bounds 选择器**：它与输入坐标等价，且坐标随界面变化不稳定，回了反而误导；省 token 也省误导。
-- 选择器优先级沿用旧技能规则：`id > text > desc`，均加可见性约束过滤不可见节点。
+- 输出：`control`（最深层控件的 7 个特征）+ `selectors`（id/text/desc 三类定位选择器，带 `.visibleToUser(true)`）——字段与优先级定义见 §7.2。
 
 调用示例（AI 侧）：
 ```bash

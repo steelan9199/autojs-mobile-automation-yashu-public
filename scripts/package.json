@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "AutoJS 手机任务执行器运行时（Node.js ES6 版本）",
   "type": "module",
-  "main": "run_task.js",
+  "main": "run-task.js",
   "bin": {
-    "run-task": "run_task.js"
+    "run-task": "run-task.js"
   },
   "scripts": {
     "start": "node autojs-relay-server.js"

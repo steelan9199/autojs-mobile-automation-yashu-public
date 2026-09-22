@@ -1,0 +1,7 @@
+{
+  "MARK": "JSON",
+  "note": "验证 .json 在打包 APK 里是否为明文。工程配置类文件走这个格式。",
+  "ext": "json",
+  "expect": "plaintext",
+  "nested": { "a": 1, "b": [true, false, null], "c": "中文也要能读出来" }
+}
