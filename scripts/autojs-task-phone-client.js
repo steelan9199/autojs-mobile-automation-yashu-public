@@ -15,10 +15,9 @@
  *
  * 使用前: 修改下方 SERVER_IP 为你电脑的局域网 IP
  *
- * ⚠️ 与 APK 打包路线是同源双份：核心逻辑（任务单、prologue 打标、无主回执兜底归因、
- *   run / run_project）在 `scripts/autojs-project/autojs-task-client-app/client-core.js`
- *   有一段段对应的副本。改动其中一份时必须同步另一份（2026-09-16 BUG-01 修复曾漏改该副本）；
- *   本文件改完用 `node scripts/update-phone-client.js` 热更新，副本则需重新打包 APK。
+ * ⚠️ 本文件是**唯一**的客户端实现（2026-09-24 起不再有 APK 打包副本）：
+ *   手机端一律用 AutoJs6 本体 APP 直接运行本脚本，无需自行打包 APK。
+ *   改完用 `node scripts/update-phone-client.js` 热更新到手机即可生效。
  *
  * 需要的手机权限（缺一不可）:
  *   ① 无障碍服务   设置 → 应用 → AutoJs6 → 无障碍
@@ -1325,10 +1324,11 @@ function deleteProject(cmd) {
 var ORB_SIZE_DP = 44; // 球体窗口边长（px 由屏幕密度换算）
 var ORB_CORE_STOP = 0.55; // 亮核半径占比，之外渐变到全透明
 var ORB_BREATH_PERIOD = 2200; // 呼吸周期（毫秒）
-var ORB_BREATH_MIN = 0.45; // 呼吸最低整体透明度
+var ORB_BREATH_MIN = 0.65; // 呼吸最低整体透明度
 var ORB_SNAP_DELAY = 1000; // 松手后多久吸附（毫秒）
 var ORB_SNAP_DUR = 200; // 吸附动画时长（毫秒）
 var ORB_BUSY_WATCHDOG = 300000; // busy 看门狗：超 5 分钟无回执自动退出蓝色
+var ORB_DRAG_SCREEN_THROTTLE = 150; // 拖动中重读屏幕尺寸的最小间隔（毫秒）
 
 var orbWin = null; // floaty 窗口
 var orbView = null; // 球体 ImageView
@@ -1346,12 +1346,108 @@ var orbCurX = 0; // 球体当前位置影子变量（拖动/动画线程都会�
 var orbCurY = 0;
 var orbSnapAt = 0; // 应吸附的时间点；0 = 无待吸附
 var orbAnim = null; // 吸附补间动画 {fromX,toX,fromY,toY,start}
+var orbDragScreenAt = 0; // 拖动中上次重读屏幕尺寸的时间戳（仅 UI 线程读写）
 
 events.on("exit", function () {
   try {
     if (orbWin) orbWin.close();
   } catch (e) {}
 });
+
+// ==================== 屏幕尺寸：必须「用的时候实时取」 ====================
+// 背景（2026-09-24 实测定位，用户报障：「悬浮球拖不到屏幕右侧，只能往左/往上拖」）：
+//   本客户端是**长驻脚本**。用户竖屏启动它 → 随后进游戏（抖音小游戏）屏幕转横屏，
+//   而 `var screenW = device.width` 只在 createOrbWindow() 里读过一次 ⇒ 永久缓存竖屏的 1440。
+//   ⇒ 拖动钳位右边界变成 `1440 - 球宽 + 内缩` ≈ 1400，屏幕右侧约 1800px 永远拖不过去；
+//     纵向上限用的是竖屏高度 3200 > 实际 1440，上下反而过松。
+//   **任何「启动时缓存屏幕尺寸」的写法在长驻脚本里都是错的。**
+// 取法（三级，前一级取不到才退下一级）：
+//   ① WindowManager 默认显示器的 getRealMetrics —— 随旋转实时更新，最权威
+//   ② device.width / device.height —— 兜底（部分引擎/版本会缓存，故不作首选）
+//   ③ AutoJs6 6.7.0+ 官方方向 API isScreenLandscape()/isScreenPortrait() —— 纠偏长短边
+var SCREEN_FALLBACK_W = 3200; // 三级全取不到时的兜底（本机实测横屏 3200x1440）
+var SCREEN_FALLBACK_H = 1440;
+var screenW = SCREEN_FALLBACK_W;
+var screenH = SCREEN_FALLBACK_H;
+// ⚠️ 挖孔屏避让偏移（2026-09-24 真机实测定位，用户报障：「球吸附到屏幕右侧后看不见」）：
+//   **floaty 窗口的坐标原点 ≠ 屏幕像素 (0,0)**。本机是 3200x1440 挖孔屏，横屏下
+//   DisplayCutout.getSafeInsetLeft() = 137，实测「屏幕像素 x = 窗口 x + 137」，
+//   且 x 方向是纯平移（斜率 1.0）、y 方向偏移为 0。
+//   ⇒ 窗口真正可放置区间是 [screenOffX, screenOffX + screenW]，不是 [0, screenW]。
+//   球贴右边缘时的窗口 x 必须写成 screenOffX + screenW - 球宽 + 内缩；
+//   漏掉 screenOffX 就会多走 137px → 球落到屏幕外（实测 3081 → 屏幕 3218，看不见）。
+//   取值随旋转自动变化（竖屏时左边不一定还有挖孔），故每次 refreshScreen() 重读。
+var screenOffX = 0;
+var screenOffY = 0;
+
+/** 实时读当前屏幕宽高（随旋转变化） */
+function liveScreen() {
+  var w = 0;
+  var h = 0;
+  var offX = screenOffX; // cutout 取不到时沿用上次值，避免中转态闪跳
+  var offY = screenOffY;
+  try {
+    var wm = context.getSystemService(android.content.Context.WINDOW_SERVICE);
+    var dm = new android.util.DisplayMetrics();
+    wm.getDefaultDisplay().getRealMetrics(dm);
+    if (dm.widthPixels > 0 && dm.heightPixels > 0) {
+      w = dm.widthPixels;
+      h = dm.heightPixels;
+    }
+  } catch (e0) {}
+  if (!(w > 0) || !(h > 0)) {
+    try {
+      w = device.width;
+      h = device.height;
+    } catch (e1) {}
+  }
+  // 官方方向 API 纠偏：显示指标与当前旋转方向矛盾时，把长短边摆正
+  try {
+    if (typeof isScreenLandscape === "function") {
+      if (isScreenLandscape() && w < h) {
+        var t1 = w;
+        w = h;
+        h = t1;
+      }
+    } else if (typeof isScreenPortrait === "function") {
+      if (isScreenPortrait() && w > h) {
+        var t2 = w;
+        w = h;
+        h = t2;
+      }
+    }
+  } catch (e2) {}
+  if (!(w > 0) || !(h > 0)) {
+    w = SCREEN_FALLBACK_W;
+    h = SCREEN_FALLBACK_H;
+  }
+  // 挖孔避让：窗口坐标原点相对屏幕像素原点的偏移（取负的安全区内缩）。
+  // 只在取到 cutout 时覆盖，取不到则保持上一次的值（不要清零，避免中转态闪跳）。
+  try {
+    var wm2 = context.getSystemService(android.content.Context.WINDOW_SERVICE);
+    var cut = wm2.getDefaultDisplay().getCutout();
+    if (cut) {
+      offX = -cut.getSafeInsetLeft();
+      offY = -cut.getSafeInsetTop();
+    }
+  } catch (e3) {}
+  return { w: w, h: h, offX: offX, offY: offY };
+}
+
+/** 刷新全局 screenW/screenH/screenOffX/screenOffY；返回是否有变化（转屏或挖孔侧变化） */
+function refreshScreen() {
+  var scr = liveScreen();
+  var changed =
+    scr.w !== screenW ||
+    scr.h !== screenH ||
+    scr.offX !== screenOffX ||
+    scr.offY !== screenOffY;
+  screenW = scr.w;
+  screenH = scr.h;
+  screenOffX = scr.offX;
+  screenOffY = scr.offY;
+  return changed;
+}
 
 function orbDpToPx(dp) {
   try {
@@ -1431,8 +1527,8 @@ function createOrbWindow() {
   orbSizePx = orbDpToPx(ORB_SIZE_DP);
   // 吸附时只把「透明边」藏进屏幕边缘，亮核完整贴边可见（露出约 90% ≥ 2/3）
   orbEdgeTuck = Math.round((orbSizePx * (1 - ORB_CORE_STOP)) / 2);
-  var screenW = device.width;
-  var screenH = device.height;
+  // 实时取屏幕尺寸：禁止缓存启动时的值（本文件是长驻脚本，竖屏启动后进横屏游戏会永久过期）
+  refreshScreen();
 
   orbWin = floaty.rawWindow(
     <frame w="*" h="*">
@@ -1443,8 +1539,9 @@ function createOrbWindow() {
   orbView = orbWin.orb;
 
   // 初始位置：右侧边缘（亮核贴边），屏幕高度 1/4 处
-  orbCurX = screenW - orbSizePx + orbEdgeTuck;
-  orbCurY = Math.round(screenH * 0.25);
+  // ⚠️ 必须带 screenOffX/screenOffY（挖孔避让偏移），否则球会落到屏幕外看不见
+  orbCurX = screenOffX + screenW - orbSizePx + orbEdgeTuck;
+  orbCurY = screenOffY + Math.round(screenH * 0.25);
   orbWin.setPosition(orbCurX, orbCurY);
 
   // 拖动（触摸回调在 UI 线程，可直接 setPosition；同时维护共享影子变量供动画线程读）
@@ -1454,6 +1551,10 @@ function createOrbWindow() {
     if (act === event.ACTION_DOWN) {
       orbSnapAt = 0; // 重新拖动时取消待吸附
       orbAnim = null;
+      // 按下时强制重读一次尺寸（每次拖动只发生一次，成本可忽略）：保证本次拖动第一次钳位
+      // 用的就是新鲜尺寸，MOVE 阶段的 150ms 门控因此不会造成可见滞后。
+      refreshScreen();
+      orbDragScreenAt = new Date().getTime();
       drag.lastX = event.getRawX();
       drag.lastY = event.getRawY();
       drag.winX = orbWin.getX();
@@ -1461,14 +1562,28 @@ function createOrbWindow() {
       return true;
     }
     if (act === event.ACTION_MOVE) {
+      // 实时尺寸钳位：转屏后仍能拖到真正的屏幕边缘。
+      // ⚠️ 必须门控：ACTION_MOVE 可达上百次/秒，每次都走 liveScreen()（getSystemService +
+      //    getRealMetrics + getCutout，全是 IPC）会把 UI 线程压满。按下时已强制刷过一次尺寸，
+      //    且脚本线程另有 500ms 一轮的转屏检测，故 150ms 门控不会漏掉转屏。
+      var nowMove = new Date().getTime();
+      if (nowMove - orbDragScreenAt > ORB_DRAG_SCREEN_THROTTLE) {
+        orbDragScreenAt = nowMove;
+        refreshScreen();
+      }
       var nx = drag.winX + (event.getRawX() - drag.lastX);
       var ny = drag.winY + (event.getRawY() - drag.lastY);
-      // 拖动范围限制在屏幕内（允许藏进边缘的透明边）
-      if (nx < -orbEdgeTuck) nx = -orbEdgeTuck;
-      if (nx > screenW - orbSizePx + orbEdgeTuck)
-        nx = screenW - orbSizePx + orbEdgeTuck;
-      if (ny < 0) ny = 0;
-      if (ny > screenH - orbSizePx) ny = screenH - orbSizePx;
+      // 拖动范围限制在屏幕内（允许藏进边缘的透明边）。
+      // ⚠️ 边界一律加 screenOffX/screenOffY：窗口坐标原点 ≠ 屏幕像素原点（挖孔避让 +137），
+      //    若仍用 [0, screenW] 钳位，贴右时会多走 137px 把球推到屏幕外（本次报障的直接原因）。
+      var minOrbX = screenOffX - orbEdgeTuck;
+      var maxOrbX = screenOffX + screenW - orbSizePx + orbEdgeTuck;
+      var minOrbY = screenOffY;
+      var maxOrbY = screenOffY + screenH - orbSizePx;
+      if (nx < minOrbX) nx = minOrbX;
+      if (nx > maxOrbX) nx = maxOrbX;
+      if (ny < minOrbY) ny = minOrbY;
+      if (ny > maxOrbY) ny = maxOrbY;
       orbCurX = Math.round(nx);
       orbCurY = Math.round(ny);
       orbWin.setPosition(orbCurX, orbCurY);
@@ -1481,11 +1596,29 @@ function createOrbWindow() {
     return true;
   });
 
-  // 唯一驱动循环（脚本线程，30fps）：呼吸脉动 + 吸附补间 + busy 看门狗
+  // 唯一驱动循环（脚本线程，30fps）：呼吸脉动 + 吸附补间 + busy 看门狗 + 转屏重钳位
   var lastPX = -1;
   var lastPY = -1;
+  var lastScreenCheck = 0;
   setInterval(function () {
     var now = new Date().getTime();
+
+    // 转屏（横/竖切换）：每 ~500ms 查一次实时尺寸（30fps 全查没必要，且每次要 new DisplayMetrics）。
+    // 变了就把球重新钳回新屏幕可视区并顺手吸附 —— 否则旧坐标可能落在新屏幕之外，球会"消失"。
+    if (now - lastScreenCheck > 500) {
+      lastScreenCheck = now;
+      if (refreshScreen()) {
+        orbAnim = null;
+        var maxOrbX = screenOffX + screenW - orbSizePx + orbEdgeTuck;
+        var maxOrbY = screenOffY + screenH - orbSizePx;
+        var minOrbXRe = screenOffX - orbEdgeTuck;
+        if (orbCurX < minOrbXRe) orbCurX = minOrbXRe;
+        if (orbCurX > maxOrbX) orbCurX = maxOrbX;
+        if (orbCurY < screenOffY) orbCurY = screenOffY;
+        if (orbCurY > maxOrbY) orbCurY = maxOrbY;
+        orbSnapAt = now + ORB_SNAP_DELAY;
+      }
+    }
 
     // 呼吸：整体透明度按正弦脉动（不停歇），相位从最暗开始渐亮
     var phase = ((now % ORB_BREATH_PERIOD) / ORB_BREATH_PERIOD) * 2 * Math.PI;
@@ -1499,9 +1632,9 @@ function createOrbWindow() {
       orbAnim = {
         fromX: orbCurX,
         toX:
-          orbCurX + orbSizePx / 2 < screenW / 2
-            ? -orbEdgeTuck
-            : screenW - orbSizePx + orbEdgeTuck,
+          orbCurX + orbSizePx / 2 < screenOffX + screenW / 2
+            ? screenOffX - orbEdgeTuck
+            : screenOffX + screenW - orbSizePx + orbEdgeTuck,
         fromY: orbCurY,
         toY: orbCurY,
         start: now,

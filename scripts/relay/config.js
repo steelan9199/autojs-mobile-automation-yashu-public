@@ -29,6 +29,14 @@ export const SCRIPTS_DIR = path.resolve(
  */
 export const PORT = Number(process.env.RELAY_PORT) || 9421;
 
+/**
+ * 撞端口（EADDRINUSE）后最多重试几次，仍失败则放弃启动并以退出码 1 报错退出。
+ * 首次 listen 失败不算重试，故最多会尝试 listen 共 1 + 本值 次。
+ * 定这个数是为了「启动后 5~7 秒端口尚未 LISTEN」的正常窗口期不被误判为失败，
+ * 同时避免端口被外部进程长期占住时无限重试、永不报错（曾经就是无限重试）。
+ */
+export const MAX_LISTEN_RETRIES = 3;
+
 /** 服务身份标识：写入 /health 响应，供"启动自保护"精准识别是否已是本服务 */
 export const APP_NAME = "autojs-task-relay-server";
 
@@ -168,5 +176,28 @@ export const APP_PING_STALE_MS = 35000;
  */
 export const SUBMIT_TIMEOUT_MS = 60000;
 
-/** 任务单熔断扫描间隔（毫秒） */
-export const SUBMIT_SWEEP_INTERVAL_MS = 5000;
+/**
+ * 运行中任务的存活超时（毫秒）：任务进入 running 后，手机客户端每 10 秒
+ * （客户端侧 TASK_HEARTBEAT_MS）报一次 task_alive 续命；若连续本阈值时长内
+ * **一条存活信号都没有**（task_alive / task_progress 都会续命）→ 熔断为
+ * failed（phase:"relay"），任务单不永久卡在 running。
+ *
+ * 这是「僵尸单」的解法。成因：客户端被热更新 / forceStop / 重启后，它内存里的
+ * taskRegistry 全部丢失（客户端侧只有内存态、不落盘）——既不会再报 task_alive，
+ * 也不会补发回执；而中继侧仍持有从 task_records.jsonl 重载来的 running 记录
+ * → 永久悬挂，且此后每次下发任务都被 run-task.js 的并发护栏误报成"有任务在跑"。
+ * 客户端自带的"引擎退出即失败"检测（连续 2 拍 / 20 秒）覆盖不到这种情况：
+ * 它自己已经不认识这个任务了，根本不会去检查它的引擎。
+ *
+ * 阈值取 90 秒 = 容忍连续 9 拍心跳丢失。正常报活间隔 10 秒，故真正在跑的任务必然
+ * 远早于阈值刷新 lastAliveAt；中继重启时磁盘记录里的 lastAliveAt 最多也只有约
+ * 20 秒旧，重连后第一条 task_alive 就会刷新，不会误杀。
+ * 注意：仅在「已武装」（本进程收到过至少一条任务单协议消息）后才启用本判定，
+ * 理由与武装机制见 task-registry.js 的 protocolArmed。
+ * 可用 RELAY_RUNNING_ALIVE_TIMEOUT_MS 覆盖（仅用于本地起临时实例做验证，同 RELAY_PORT）。
+ */
+export const RUNNING_ALIVE_TIMEOUT_MS =
+  Number(process.env.RELAY_RUNNING_ALIVE_TIMEOUT_MS) || 90000;
+
+/** 任务单熔断扫描间隔（毫秒）：提交超时与运行存活超时共用同一拍 */
+export const TASK_SWEEP_INTERVAL_MS = 5000;

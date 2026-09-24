@@ -61,7 +61,10 @@ function killPid(pid) {
  * 释放端口：若被占用则强杀占用进程（自身进程除外）。
  *
  * 注意：调用方必须先确认"本服务没在跑"，否则会误杀正在服务手机端的实例。
- * 该前置判断由 pc-bootstrap.checkAlreadyRunning 负责。
+ * 常规入口是 pc-bootstrap.freePortForStart —— 它已把该复核内聚成自守护（内部先
+ * checkAlreadyRunning），凡"清掉来路不明的占用"都走它，不要直接调本函数。
+ * 唯一例外：pc-bootstrap.replaceRunningService 的自升级强杀兜底（对象是已确认为
+ * 本服务、指纹不同的旧实例，属有意替换）。
  */
 export function freePort(port) {
   const pids = findPidsByPort(port).filter((pid) => pid !== String(process.pid));

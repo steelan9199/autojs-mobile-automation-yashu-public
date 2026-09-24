@@ -186,6 +186,12 @@ btn.attr("visibility", "gone");       // 或 setVisibility(android.view.View.GON
   走启动器时子引擎无 `__taskId`（易串号）：子脚本把结果 `files.write` 到约定路径，launcher `sleep` 后读回上报，
   且 launcher 自身必须挂 `events.on("exit")` 广播。
 - 结束界面用 `ui.finish()`；canvas 规则同 §1.1。
+- ⚠️ **`ui.finish()` 会连带终止整个 UI 脚本引擎（2026-09-24 真机实测）**：UI 模式下 Activity
+  就是脚本宿主，finish 掉它脚本随之结束——**`setInterval` 之类的保活锚救不回来**（实测里
+  "layout → 3 秒后 `ui.finish()` + `setInterval(fn,10000)` 保活"的脚本仍在 finish 后立刻
+  退出，随即被客户端"连续 2 拍不在 `engines.all()`"检测判为失败）。所以
+  **「关掉界面但让脚本继续在后台跑」在 UI 模式下做不到**：要么 finish 即收工，要么一开始就
+  换悬浮窗（`floaty.window`/`rawWindow`）宿主——后者本就靠脚本线程活着，关窗不影响脚本。
 
 ---
 
@@ -199,7 +205,7 @@ floaty.closeAll();                  // 一次关掉全部悬浮窗（exit 兜底
 ```
 
 - **拖动**：根 View / 标题条挂 `setOnTouchListener`，自己记账 `winX/winY`（`getRawX()` 增量），别依赖 `getX()/getY()`（横屏基准会乱）。
-- **坐标地面真值**：`view.getLocationOnScreen(int[2])`，比 `setPosition` 账面值可靠（横屏有固定偏移），`qiu-calib` 全靠它。
+- **坐标地面真值**：`view.getLocationOnScreen(int[2])`，比 `setPosition` 账面值可靠。**横屏下 `setPosition` 的 y 精确、x 恒定偏 +137px**（2026-09-23 本机 3200×1440 横屏实测：`setSize(3200,1440)+setPosition(0,0)` 实测 `(137,0)`、全屏绿幕实际只覆盖 `x∈[136,3199]`；四下 `setPosition(0/2780, 0/1020)` 实测一律 `(137/2917, 0/1020)` —— 偏移与目标无关，是**常量**）。⇒ ① 悬浮窗可用区左边界 = **136px**，`setPosition(x<136)` 到不了屏幕左缘，屏幕最左 136px 任何悬浮窗都盖不住；② 要按屏幕坐标精确落位，**一律先 `getLocationOnScreen` 量偏移再补偿**（`qiu-calib` 已这么做）；③ **反向不成立**：`press`/`gesture`/`gesturesAsync` 走 A11Y，**不受此偏移影响**（同轮 6 点实测下发=实收逐位相同），两条通道勿互推。取证脚本 `scripts/verify/phone/qiu-coord-probe.js`。
 - **保活**：脚本主线程跑完即退、悬浮窗随之销毁 → 用 `setInterval(空函数, 3000)` 保活。
 - **canvas 不设 `bg`**（否则建窗直接抛 `TextureView doesn't support displaying a background drawable`）；背景放外层容器。
 - **canvas 每帧首行清屏**：`canvas.drawColor(0, CLEAR)`，否则画面"冻结"。

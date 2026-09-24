@@ -18,12 +18,14 @@
  * 端口：9421（HTTP + WebSocket 共用）
  */
 
-import { PORT, VERSION, BUILD_FINGERPRINT, UPLOAD_DIR, MAX_PC_UPLOAD_FILES, TEMP_DIR, MAX_PC_TEMP_FILES } from "./relay/config.js";
+import { PORT, VERSION, BUILD_FINGERPRINT, UPLOAD_DIR, MAX_PC_UPLOAD_FILES, TEMP_DIR, MAX_PC_TEMP_FILES, MAX_LISTEN_RETRIES } from "./relay/config.js";
 import { pruneToMax } from "./relay/utils/fsx.js";
+import { findPidsByPort } from "./relay/utils/port.js";
 import { createRelayServer } from "./relay/router.js";
 import { attachPhoneWS } from "./relay/phone-ws.js";
 import { setServer } from "./relay/state.js";
 import {
+  checkAlreadyRunning,
   probeService,
   replaceRunningService,
   freePortForStart,
@@ -56,21 +58,63 @@ if (existing) {
 // 先确保端口空闲（自升级已杀掉老程序后，这里清可能的残留占用），再创建并监听。
 // createRelayServer() 内部已将 Hono 挂到 http.Server 上但不自动 listen，
 // 监听时机交由本文件统一掌控，便于与 WebSocket（ws 库）共用同一端口。
-freePortForStart(PORT);
+//
+// freePortForStart 自带归属复核（内部先 checkAlreadyRunning）：上面的 probeService
+// 与本行之间有一个窗口（probeService 最坏 3 次 HTTP 探测各 1s 超时），期间若有另一
+// 实例抢先 listen，这里必须先识别出来并让位，否则会把正在服务手机端的那份杀掉。
+const startupFree = await freePortForStart(PORT);
+if (startupFree.alreadyRunning) {
+  printAlreadyRunningNotice(PORT);
+  process.exit(0);
+}
 
 const server = createRelayServer();
 attachPhoneWS(server);
 // 把 server 实例交给 state，供 /shutdown 优雅退出时调用 close()
 setServer(server);
 
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(`[端口] ${PORT} 仍被占用，1 秒后重试一次...`);
-    freePortForStart(PORT);
-    setTimeout(() => server.listen(PORT), 1000);
-  } else {
+// 撞端口后的重试编排。三条纪律：
+//   1) 释放端口前必须复核"是不是我们自己的中继" —— freePort 的既定前置条件就是
+//      "先确认本服务没在跑"，否则会把正在服务手机端的那份实例杀掉（= 手机断连、
+//      要用户手动重开 App）。这里有两道闸：① 早退复核（管重试计数语义：让位不消耗
+//      重试次数）；② freePortForStart 的自守护复核（兜住 ①→② 之间的窄窗口）。
+//   2) 重试次数封顶 MAX_LISTEN_RETRIES，超过则明确报错退出（退出码 1），
+//      不再无限重试——无限重试时进程既不服务也不报错，排查时只见日志刷屏。
+//   3) 退出用 process.exit(1)（进程从未 listen，无在途请求可丢）。
+let listenRetries = 0;
+server.on("error", async (err) => {
+  if (err.code !== "EADDRINUSE") {
     console.error("[服务器] 错误:", err.message);
+    return;
   }
+
+  // 闸①：端口上是自己的服务 → 不抢、不杀，直接让位退出（与启动时的自保护语义一致）
+  if (await checkAlreadyRunning(PORT)) {
+    printAlreadyRunningNotice(PORT);
+    process.exit(0);
+  }
+
+  listenRetries++;
+  if (listenRetries > MAX_LISTEN_RETRIES) {
+    const pids = findPidsByPort(PORT);
+    console.error("========================================");
+    console.error(`  启动失败：端口 ${PORT} 被占用，重试 ${MAX_LISTEN_RETRIES} 次仍未成功`);
+    console.error(`  占用进程 PID: ${pids.length ? pids.join(", ") : "(netstat 未查到 LISTENING 进程)"}`);
+    console.error("  排查: netstat -ano -p TCP | findstr :" + PORT);
+    console.error("========================================");
+    process.exit(1);
+  }
+
+  console.error(
+    `[端口] ${PORT} 仍被占用，1 秒后重试（第 ${listenRetries}/${MAX_LISTEN_RETRIES} 次）...`
+  );
+  // 闸②：真正释放端口。freePortForStart 内部自守护，会再复核一次归属；
+  // 若恰好是这段时间里抢进来的本服务实例，同样让位（不抢杀）。
+  if ((await freePortForStart(PORT)).alreadyRunning) {
+    printAlreadyRunningNotice(PORT);
+    process.exit(0);
+  }
+  setTimeout(() => server.listen(PORT), 1000);
 });
 
 // 启动前先清理：覆盖服务停期间堆积的旧文件

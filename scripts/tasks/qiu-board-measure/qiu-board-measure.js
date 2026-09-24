@@ -321,8 +321,9 @@ try {
   }
   incRadius.on("click", function () { radius = Math.min(radius + step, RAD_MAX); refreshReadout(); });
   decRadius.on("click", function () { radius = Math.max(radius - step, RAD_MIN); refreshReadout(); });
-  upBtn.on("click", function () { cy = clampY(cy + step); refreshReadout(); });
-  downBtn.on("click", function () { cy = clampY(cy - step); refreshReadout(); });
+  // 方向键：屏幕坐标 y 向下增大 ⇒ 「上」= cy-step、「下」= cy+step（2026-09-23 真机反馈订正）
+  upBtn.on("click", function () { cy = clampY(cy - step); refreshReadout(); });
+  downBtn.on("click", function () { cy = clampY(cy + step); refreshReadout(); });
   leftBtn.on("click", function () { cx = clampX(cx - step); refreshReadout(); });
   rightBtn.on("click", function () { cx = clampX(cx + step); refreshReadout(); });
 

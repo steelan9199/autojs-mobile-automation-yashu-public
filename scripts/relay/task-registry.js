@@ -10,6 +10,11 @@
  *     → stopped（AI 经 /task-stop 强杀）
  *   unknown（回执无 taskId 且无法归因时的兜底，见 phone-ws.js）
  *
+ * 中继侧熔断（本模块底部扫描器，5 秒一拍，统一落 failed + result.phase==="relay"）：
+ *   submitted 超过 SUBMIT_TIMEOUT_MS（60s）未被接单 → 熔断
+ *   running   超过 RUNNING_ALIVE_TIMEOUT_MS（90s）无任何存活信号 → 熔断
+ * 两条判据都是为了"任务单不永久悬挂"；第二条只在 protocolArmed 后启用，见其注释。
+ *
  * 记录字段：
  *   taskId / kind("run"|"project") / name(模板名或工程名) / argsSummary(截断的参数 JSON)
  *   status / submittedAt / startedAt / finishedAt / lastAliveAt / progress / result
@@ -20,7 +25,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { SCRIPTS_DIR, SUBMIT_TIMEOUT_MS, SUBMIT_SWEEP_INTERVAL_MS } from "./config.js";
+import {
+  SCRIPTS_DIR,
+  SUBMIT_TIMEOUT_MS,
+  TASK_SWEEP_INTERVAL_MS,
+  RUNNING_ALIVE_TIMEOUT_MS,
+} from "./config.js";
 
 const TASKS_LOG_PATH = path.join(SCRIPTS_DIR, "task_records.jsonl");
 const MAX_RECORDS = 30; // 只保留最近 30 条：内存与磁盘同上限，启动时压缩回写
@@ -61,6 +71,41 @@ function recordTemplateDuration(rec) {
 
 /** taskId -> record，Map 保持插入序（即提交序） */
 const records = new Map();
+
+/**
+ * 任务单协议"已武装"标志（进程级，不落盘）。
+ *
+ * 含义：本进程**收到过至少一条任务单协议消息**（task_started / task_progress /
+ * task_alive，见 phone-ws.js）。这三条消息是 2026-09-16 起的任务单协议的一部分，
+ * 只要对端说的是这套协议，就一定会按 10 秒节奏报 task_alive。
+ *
+ * 为什么要这道闸：运行存活超时熔断依赖 lastAliveAt，而 markRunning() 会把
+ * lastAliveAt 初值设成 startedAt。若对端是**不发 task_alive 的旧版客户端**，
+ * 它的合法长任务 lastAliveAt 会一直停在 startedAt → 被误杀。而终态不可覆盖
+ * （finishTask 幂等），真实回执随后到达也会被丢弃 —— 误杀代价是"吞掉真结果"，
+ * 比悬挂更糟。故宁可不武装、退化成旧行为，也不误杀。
+ *
+ * 与 state.js 里 APP_PING_STALE_MS 的 armed 思路一致（首次应用层 ping 到达后才
+ * 启用引擎假死判死）：都是用"对端是否说了新协议"来决定要不要启用更激进的新判定。
+ *
+ * 已知残留缺口（可接受）：客户端重启后既不接新任务也不再发任何协议消息时，
+ * 本进程永远不会武装，其遗留 running 单不会被清扫。但那种情况下也不会产生
+ * 并发误报（没有新任务下发），仅在 --list 里可见，属安全方向的降级。
+ */
+let protocolArmed = false;
+
+/** 收到任意任务单协议消息即武装（幂等） */
+function armProtocol() {
+  protocolArmed = true;
+}
+
+/**
+ * 当前是否已武装（供 /health 观察：未武装时运行存活超时熔断是关闭的）。
+ * 排查"僵尸单为什么没被扫掉"时先看这个。
+ */
+export function isProtocolArmed() {
+  return protocolArmed;
+}
 
 /** 生成 taskId：t<月日_时分秒>_<4位十六进制随机>，如 t0829_131500_a3f2 */
 function genTaskId() {
@@ -189,6 +234,7 @@ export function isTerminal(rec) {
 
 /** 手机端已接单开始执行 */
 export function markRunning(taskId) {
+  armProtocol(); // 对端说了任务单协议 → 允许启用运行存活超时熔断
   const rec = records.get(taskId);
   if (!rec || isTerminal(rec)) return;
   rec.status = "running";
@@ -199,6 +245,7 @@ export function markRunning(taskId) {
 
 /** 更新进度消息（同时视作一次存活信号） */
 export function markProgress(taskId, progress) {
+  armProtocol();
   const rec = records.get(taskId);
   if (!rec || isTerminal(rec)) return;
   rec.progress = String(progress ?? "").slice(0, 200);
@@ -208,6 +255,7 @@ export function markProgress(taskId, progress) {
 
 /** 存活心跳 */
 export function touchAlive(taskId) {
+  armProtocol();
   const rec = records.get(taskId);
   if (!rec || isTerminal(rec)) return;
   rec.lastAliveAt = Date.now();
@@ -240,11 +288,18 @@ loadFromDisk();
   }
 })();
 
-// 提交超时熔断：/run 提交后 status 长期停在 submitted（手机一直没接单，
-// 场景：提交瞬间手机断线、客户端引擎假死不执行指令、中继重启后重载的历史悬挂单）
-// → 熔断为 failed（phase:"relay"），任务单不永久悬挂，AI 侧 --status 能拿到确定终态。
-const submitSweeper = setInterval(() => {
+// 任务单熔断扫描（5 秒一拍，两个状态各一条判据）：
+//   ① submitted 提交超时 —— /run 提交后手机一直没接单
+//      （场景：提交瞬间手机断线、客户端引擎假死不执行指令、中继重启后重载的历史悬挂单）
+//   ② running 存活超时 —— 客户端接下任务后再也没有任何存活信号
+//      （场景：客户端热更新/forceStop/重启后内存里的 taskRegistry 全丢，既不报
+//       task_alive 也不补回执，中继侧却仍持有重载来的 running 记录 → 僵尸单）
+// 两者统一熔断为 failed（phase:"relay"），任务单不永久悬挂，
+// AI 侧 --status 能拿到确定终态、并发护栏也不再被僵尸单误报。
+const taskSweeper = setInterval(() => {
   const now = Date.now();
+
+  // ① 提交超时
   for (const rec of records.values()) {
     if (rec.status === "submitted" && now - rec.submittedAt > SUBMIT_TIMEOUT_MS) {
       finishTask(rec.taskId, "failed", {
@@ -255,5 +310,25 @@ const submitSweeper = setInterval(() => {
       console.log("[task-registry] 提交超时熔断:", rec.taskId);
     }
   }
-}, SUBMIT_SWEEP_INTERVAL_MS);
-submitSweeper.unref();
+
+  // ② 运行存活超时。未武装（对端不是任务单协议客户端）则整条判据不启用，退化成旧行为。
+  if (!protocolArmed) return;
+  for (const rec of records.values()) {
+    if (rec.status !== "running") continue;
+    // lastAliveAt 正常由 markRunning 写入；兜底表达式只防手工/历史脏数据。
+    const last = rec.lastAliveAt || rec.startedAt || rec.submittedAt;
+    const lag = now - last;
+    if (lag > RUNNING_ALIVE_TIMEOUT_MS) {
+      const lagS = Math.round(lag / 1000);
+      finishTask(rec.taskId, "failed", {
+        ok: 0,
+        err: `运行中连续 ${lagS} 秒未收到任何存活心跳（客户端可能已重启并丢失该任务、或引擎被静默杀死），已熔断`,
+        phase: "relay",
+      });
+      console.log(
+        `[task-registry] 运行存活超时熔断: ${rec.taskId}（aliveLag=${lagS}s）`
+      );
+    }
+  }
+}, TASK_SWEEP_INTERVAL_MS);
+taskSweeper.unref();

@@ -40,6 +40,34 @@ function onBinary(data) {
 }
 
 /**
+ * 由回执内容判定任务单成败（success / failed）。
+ *
+ * 关键：客户端回执的 payload 恒为 JSON **字符串**，不是对象。
+ *   见 autojs-task-phone-client.js 的 finishClientTask(taskId, payloadStr)，
+ *   它把 broadcast 收到的原始串原样透传进 { payload: payloadStr }。
+ * 因此绝不能写成 parsed.payload.ok === 0 —— 字符串上没有 ok 属性，判据恒为假，
+ * 所有 ok:0 的失败回执都会被误记成 success。
+ *   2026-09-24 真机复现（修前）：两条失败单都落成了 success——
+ *     t0924_001104_0de9  {"ok":0,"err":"执行脚本出错: Error: 下载失败 status=404"}
+ *     t0924_005119_5366  {"ok":0,"err":"引擎已退出但未收到回执"}
+ *
+ * 这里先归一化再判：字符串先 JSON.parse；解析不出来或没有 ok 字段时维持宽松
+ * （判 success），与旧行为一致 —— 回执原文仍原样落进 result 供人工核对。
+ */
+function judgeResultStatus(payload) {
+  let p = payload;
+  if (typeof p === "string") {
+    try {
+      p = JSON.parse(p);
+    } catch {
+      return "success"; // 非 JSON 串：本判据不适用，维持旧行为
+    }
+  }
+  if (!p || typeof p !== "object") return "success";
+  return p.ok === 0 || p.ok === "0" ? "failed" : "success";
+}
+
+/**
  * 无主旧格式回执的兜底归因：旧版手机客户端（或未注入 taskId 的流程）回传
  * run_result 时没有 taskId。若此刻没有在途请求可接，就归因给最近一条
  * 提交 60 秒内、尚未终态的任务单——中继重启/客户端热更新交替窗口期的结果不丢。
@@ -56,7 +84,8 @@ function attributeOrphanResult(payload) {
     .sort((a, b) => b.submittedAt - a.submittedAt);
   if (candidates.length === 0) return false;
   const rec = getTask(candidates[0].taskId);
-  finishTask(rec.taskId, "success", payload);
+  // 同样要归一化：旧格式回执的 payload 也是 JSON 字符串，写死 success 会漏掉失败
+  finishTask(rec.taskId, judgeResultStatus(payload), payload);
   console.log(`[WS] 无主回执已归因给最近任务单 ${rec.taskId}`);
   return true;
 }
@@ -121,8 +150,9 @@ function onText(msg) {
   }
   if (parsed.type === "task_result") {
     if (parsed.taskId) {
-      const ok = parsed.payload && parsed.payload.ok === 0 ? "failed" : "success";
-      finishTask(parsed.taskId, ok, parsed.payload);
+      // ⚠️ 必须经 judgeResultStatus 归一化：payload 是 JSON 字符串而非对象，
+      //    直接取 .ok 会恒判 success（详见该函数注释的真机复现记录）。
+      finishTask(parsed.taskId, judgeResultStatus(parsed.payload), parsed.payload);
     }
     return;
   }
@@ -161,6 +191,19 @@ function onText(msg) {
  */
 export function attachPhoneWS(server) {
   const wss = new WebSocketServer({ server });
+
+  // ⛔ 必须挂 error 监听，否则端口被占用会直接崩进程。
+  // ws 会把宿主 HTTP server 的 'error' 事件原样转发到 wss 上
+  // （见 node_modules/ws/lib/websocket-server.js 的 addListeners: error: this.emit.bind(this,'error')）。
+  // 该转发器注册在宿主 server 上，且**早于**启动文件里的 server.on("error")——
+  // 一旦 wss 上无人接管，Node 就以「未处理的 'error' 事件」同步抛异常，
+  // 异常从 server.emit('error') 里冲出，启动文件里那条「EADDRINUSE → 1 秒后重试」
+  // 的逻辑**永远命中不到**，进程直接死（实测复现：stdout 出现
+  // "Emitted 'error' event on WebSocketServer instance"）。
+  // 这里只做记录、不吞：真正的处置（释放端口 + 重试 listen）归启动文件。
+  wss.on("error", (err) => {
+    console.error("[WS] 服务错误:", err.message);
+  });
 
   // 协议层心跳：一个周期未回 pong 即 terminate 强断（手机端感知后 3 秒自动重连，自愈）
   const heartbeat = setInterval(() => {

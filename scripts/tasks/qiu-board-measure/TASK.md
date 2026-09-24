@@ -12,6 +12,7 @@ args: { "cx": "number?", "cy": "number?", "r": "number?", "step": "number?" }
 `BOARD` 外接正方形（2026-09-16 估算值）的替换来源，也是 AI 作画"哪里能画"的边界依据。
 
 与 `qiu-calib`（单点坐标标定）互补：qiu-calib 标的是**按钮点位**，本模板量的是**画板几何区域**。
+与 `qiu-btn-measure`（命名圆形按键的**圆心 + 半径**）互补：要量的是游戏按键（摇杆/吐孢子/分身）而不是画板时，用那个。
 模板名 `qiu-board-measure`，别名 `qiu-measure-board` / `qiu-area-probe` 未采用。
 
 ## 双悬浮窗（同 qiu-calib 已验证架构）

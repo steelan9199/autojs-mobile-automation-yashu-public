@@ -50,11 +50,22 @@ export function checkAlreadyRunning(port) {
 }
 
 /**
- * 启动前清理端口占用。
- * 仅在 checkAlreadyRunning 返回 false 后调用，确保不会误杀自己人。
+ * 启动/重试前清理端口占用 —— **自守护**：内部必定先复核端口上是不是本服务。
+ *
+ * `freePort` 会 taskkill 占用者，其既定前置条件是"先确认本服务没在跑"；
+ * 误杀自己人 = 手机断连、要用户手动重开 App。把复核内聚进本函数，
+ * 调用方就无法因忘记复核而误杀；同时把「探测归属」与「动手杀进程」之间的
+ * 窗口由调用方的秒级（`probeService` 内含 3 次 HTTP 探测，最坏各 1s 超时）
+ * 压缩到本函数内的毫秒级，重复拉起互杀的窗口随之收窄。
+ *
+ * @returns {Promise<{alreadyRunning:boolean}>}
+ *   alreadyRunning=true ⇒ 端口上是本服务，**已放弃释放**，
+ *   调用方应打印「已在运行」并 exit 0 让位——不抢、不杀。
  */
-export function freePortForStart(port) {
+export async function freePortForStart(port) {
+  if (await checkAlreadyRunning(port)) return { alreadyRunning: true };
   freePort(port);
+  return { alreadyRunning: false };
 }
 
 /**
@@ -103,6 +114,9 @@ export async function replaceRunningService(port, info) {
   }
 
   // 3) 兜底：按端口强杀残留（此时本进程尚未 listen，不会误伤自己）
+  //    这里是"直接调 freePort"的唯一合法例外：对象已由 probeService 确认为本服务、
+  //    且指纹不同（= 有意替换的旧实例）。此时不能走 freePortForStart 的归属复核，
+  //    否则 checkAlreadyRunning 命中旧实例、会让位而把自升级挡死。
   console.log(`[升级] 优雅退出超时，${port} 仍被占用，执行强杀兜底`);
   freePort(port);
   await waitPortFree(port, 3000);
