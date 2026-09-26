@@ -141,7 +141,7 @@ try { DENSITY = context.getResources().getDisplayMetrics().density; } catch (e) 
 ### `<text>` —— 首选，按钮也用它
 一切可点元素用 `<text ... />` + `setClickable(true)`，比 `<button>` 可控。`gravity="center"`、`textColor`、`textSize`、`textStyle="bold"`（实测 `isBold()`=true ✅）、`maxLines` 均生效。
 
-### `<button>` —— 有高度陷阱
+### `<button>` —— 有高度陷阱，无可靠高度公式
 - `textSize` **是生效的**（实测 `getTextSize()`=84 = 24sp×3.5），`getText()` 也正确。
 - 文字消失的真因是**高度不够被裁**（不是"按钮不能渲染文字"）：
 
@@ -149,7 +149,13 @@ try { DENSITY = context.getResources().getDisplayMetrics().density; } catch (e) 
 | --- | --- | --- | --- | --- |
 | 表现 | 完全无文字 | 上下被裁剩半截 | 基本可见、底部略裁 | 完整清晰 ✅ |
 
-> 结论：用 `<button>` 就把高度给到 **≥ 字号×2**（20sp → ≥160px @density3.5）；否则换 `<text>` + `setClickable(true)`。
+> ⚠️ **"高度 ≥ 字号×2"不是充分判据（2026-09-26 真机证伪，3200×1440 横屏）**：72px 字 +
+> `Widget.AppCompat.Button.Colored` 显式 `h=144px`（=字号×2）→ 底部仍裁约 1/5 字高——
+> 样式自带内边距/行高随字号、样式、机型而变，`<button>` 高度只能真机实测校准。
+> **可点元素一律首选 `<text>` + `setClickable(true)`**：同机同高 144px、`gravity="center"`，
+> TextView 无样式隐形内边距，文字完整显示（同轮对照实测）。
+> 另外 `h="auto"` 不豁免裁字；`padding`/`margin` 裸数字=dp 会挤占窗口空间，边距一律写 `px`
+> 后缀（支持 `{{}}` 插值，如 `h="{{BTN_H}}px"`）。
 
 ### 其他常用
 `img`（`src="file://..."`/`http://...`）、`canvas`（自绘，见 §1.1）、`list`、`checkbox`、`progressbar`、`input`、`radio`，及自定义控件（`<butLogo-layout .../>`，见 `references/AutoJS6自定义控件.md`）。
@@ -235,7 +241,7 @@ floaty.closeAll();                  // 一次关掉全部悬浮窗（exit 兜底
    只有「必须运行时拼装」（循环生成几十个同类控件、运行时 dp 换算）才退到字符串形式，
    且此时**优先改成 `px` 单位 + `{{}}` 插值常量**（见 §2/§3）——多数「必须拼装」其实是不必要的。
 3. 多行内容用 `vertical`，**别用 `frame`**（它只会叠）。
-4. 可点元素用 `<text>` + `setClickable(true)`；非要 `<button>` 就把高度给足（≥字号×2）。
+4. 可点元素一律用 `<text>` + `setClickable(true)`；`<button>` 高度无可靠公式（字号×2 也实测裁过底），非用不可就必须真机实测校准。
 5. 悬浮窗改 View 一律 `ui.run`/`ui.post`；脚本要保活，否则窗口瞬间消失。
 6. UI 脚本**第一个字符**就写 `'ui';`（注释往后放），**直接下发即可**，不必绕启动器。
 6. density 运行时取，别抄文档里的数值。

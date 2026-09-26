@@ -33,6 +33,8 @@ try {
   logger.warn && logger.warn("circle-refiner 注入失败，感知回退面积法: " + eRefiner);
 }
 var control = require("./lib/control");
+var pcVision = require("./lib/pc_vision");   // v2 感知客户端：识别上 PC（07 §七），失败契约=短暂容忍+安全停车
+var lungeCtl = require("./lib/lunge");       // v2 进攻：单人合球推进状态机（老板 2026-09-26 口述手法）
 var aim = require("./lib/aim");       // 决策层本地几何（纯模块；2026-09-25 从本文件抽出的 computeAim）
 var jev = require("./lib/jev");
 var round = require("./lib/round");   // 局边界裁决器（签名确认判死 → 置终局位 → 主循环停机；2026-09-25 老板改判）
@@ -410,7 +412,8 @@ function runLoop() {
 
     try {
       var shot = captureScreen();
-      var state = vision.perceive(shot, frame);
+      var pcRes = pcVision.fetchState(shot, frame);   // v2：感知上 PC（07）；失败契约=短暂容忍+安全停车
+      var state = pcRes.state;
 
       if (state) {
         selfLostFrames = 0;
@@ -419,13 +422,21 @@ function runLoop() {
         var weights = pickWeights();
         var aimRes = computeAim(state, weights);   // ⚠️ 不要命名 aim —— 会遮蔽模块 aim（drive 模式下作护栏兜底）
         var driveFresh = latestDrive && (Date.now() - latestDrive.at) <= CFG.JEV_DRIVE_TTL_MS;
-        var reflex = escapeReflex(state);          // 硬护栏④：逃命分身反射，优先级最高（drive 与基线之上）
+        // v2 进攻：单人合球推进状态机（老板 2026-09-26 口述手法）。活动期间压过逃命反射
+        //（老板拍板：合球中途出威胁不逃命——合球速度快，逃被吃概率反而大）。
+        var lungeRes = lungeCtl.update(state);
+        var reflex = lungeRes.active ? { flee: null, split: 0, spit: 0, gap: -1 } : escapeReflex(state);
         var sent;
         if (reflex.flee) {
           // ★逃命反射接管：方向背离最贴的威胁；朝向已背对才按键（分身+吐孢两键齐发，冷却内只掰方向不按键）
           sent = control.push(reflex.flee.x, reflex.flee.y, CFG.JEV_STEER_SPEED);
           if (reflex.split) { control.split(1); }
           if (reflex.spit) { control.spit(1); }
+        } else if (lungeRes.active) {
+          // ★合球推进：方向由状态机给（猎物实时方向/画弧方向），分身/吐孢边沿触发（进相那一拍按一次）
+          sent = control.push(lungeRes.x, lungeRes.y, CFG.JEV_STEER_SPEED);
+          if (lungeRes.split) { control.split(1); }
+          if (lungeRes.spit) { control.spit(1); }
         } else if (CFG.JEV_MODE !== "record" && driveFresh) {
           // ★全权驾驶：方向听 JEV 的（本地只留硬护栏）；按键边触发——一条指令只按一次
           var dv = driveVector(state, latestDrive.steer, aimRes);
@@ -493,6 +504,7 @@ function runLoop() {
           drive_age_ms: latestDrive ? (Date.now() - latestDrive.at) : -1,
           reflex: reflex.split ? 2 : (reflex.flee ? 1 : 0),
           reflex_gap: Math.round(reflex.gap),
+          lunge: lungeRes.active ? lungeRes.phase : 0,
           frame_ms: state.stats.frame_ms,
           ms_resize: state.stats.resize_ms,
           ms_getpx: state.stats.getpx_ms,
@@ -517,9 +529,10 @@ function runLoop() {
           ? hudText.driveLabel(latestDrive.steer.dir, latestDrive.split, latestDrive.spit)
           : null;
         updateHud(hudText.format(state.self.n, roundTracker.getState(), 0, driveHud));
-      } else {
+      } else if (pcRes.selfLost) {
+        // v2：PC 说画面里没有 self（可能死了）⇒ 走既有判死流程（像素签名判定，与感知来源无关）
         selfLostFrames++;
-        logger.write({ f: frame, err: "self_not_found", lost: selfLostFrames });
+        logger.write({ f: frame, err: "self_not_found", lost: selfLostFrames, pc: 1 });
         // 局边界观察：self 丢失 → 可能进 DYING / 确认死亡（裁决只落日志+存图，不改控制流）
         var roundEv = roundTracker.onSelfLost(frame, shot);
         if (roundEv && roundEv.type === "round_end") {
@@ -535,6 +548,19 @@ function runLoop() {
         if (roundOverConfirmed) {
           logger.write({ ev: "hud_final", text: lostHud, lost: selfLostFrames, hold_ms: CFG.HUD_DEATH_HOLD_MS });
         }
+      } else {
+        // v2：PC 失联/数据过期（pcRes.stale）⇒ 安全停车：本帧不推任何键（松杆=球减速停），
+        // HUD 报警。判死观察照常：roundTracker 是像素签名判定，与感知来源无关——PC 挂了球死也能判。
+        var roundEv2 = roundTracker.onSelfLost(frame, shot);
+        if (roundEv2 && roundEv2.type === "round_end") {
+          roundOverConfirmed = roundTracker.isRoundOver();
+          stopReason = "death:" + (roundEv2.why || "?");
+        }
+        logger.write({
+          f: frame, err: "pc_stale_stop", fails: pcVision.getConsecutiveFails(),
+          pc_err: pcRes.err
+        });
+        updateHud("PC失联 · 安全停车");
       }
     } catch (e) {
       logger.write({ f: frame, err: "frame_exception: " + String(e) });
@@ -558,6 +584,8 @@ try {
   }
   conf.assertCalibrated();
   aim.init(CFG);      // 依赖注入：lib/aim.js 的 ../config 也是另一实例（同下 control 的坑）
+  pcVision.init(CFG); // v2 感知客户端依赖注入：PC 地址读 relay-config（与中继同源），失败契约见 07 §五
+  lungeCtl.init(CFG); // 合球推进依赖注入：夹角/间隔/触发阈值全在 config.js LUNGE_* 块
   control.init(CFG);   // ⚠️ 依赖注入：lib 各模块 require("../config") 与这里的 ./config 不是同一实例
                        //    （2026-09-24 真机实测 sameRef:false，见 references/05 §3.4）——不注入，
                        //    control 拿到的按键几何全是 0，首跑"圆盘锚死左上角"就是这个原因。
