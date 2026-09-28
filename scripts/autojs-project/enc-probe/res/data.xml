@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MARK:XML — 验证 .xml 在打包 APK 里是否为明文 -->
+<probe ext="xml" expect="plaintext">
+  <item key="MARK">XML</item>
+  <item key="note">常见于配置、资源描述、SVG 之外的矢量/布局定义</item>
+</probe>

@@ -1,0 +1,5 @@
+{
+  "name": "fx-launcher",
+  "main": "main.js",
+  "ignore": ["node_modules", "*.log", "sub-result.json", "launcher-result.json"]
+}

@@ -1,0 +1,214 @@
+<div id="app">
+  <header class="topbar">
+    <div class="title">Vue3 + AutoJS 实验台</div>
+    <div class="sub">{{ greeting }}</div>
+  </header>
+
+  <main>
+    <!-- 区块 1：网页 -> 安卓（同步调用） -->
+    <section class="card">
+      <h3>① 网页 → 安卓（同步）</h3>
+      <div class="form-row">
+        <label class="lbl">要 toast 的文字</label>
+        <input type="text" v-model="toastText" placeholder="输入什么就 toast 什么" />
+      </div>
+      <div class="btn-row">
+        <button class="primary" @click="doToast">立刻 toast</button>
+        <button @click="doDeviceInfo">读取设备信息</button>
+      </div>
+      <div class="code-row"><pre>{{ out.callOut }}</pre></div>
+    </section>
+
+    <!-- 区块 2：安卓 -> 网页（事件推送） -->
+    <section class="card">
+      <h3>② 安卓 → 网页（事件）</h3>
+      <p class="hint">安卓每 2 秒推一次 tick，网页 AJS.on('tick') 接收</p>
+      <ul class="ticks">
+        <li v-for="(t, i) in ticks" :key="i">
+          <span class="dot"></span>
+          <span>{{ t.time }}</span>
+          <span class="bat">电量 {{ t.battery }}%</span>
+        </li>
+      </ul>
+      <div class="btn-row">
+        <button @click="doStartPush">开始安卓轮询</button>
+        <button @click="doStopPush">停止安卓轮询</button>
+      </div>
+    </section>
+
+    <!-- 区块 3：安卓直接改页面变量 -->
+    <section class="card" :class="{ flash: flashing }">
+      <h3>③ 安卓直接改网页变量</h3>
+      <p class="hint">点按钮触发安卓 AJS.set('pageMsg', ...)</p>
+      <div class="big-msg">{{ pageMsg }}</div>
+      <div class="btn-row">
+        <button class="primary" @click="askAndroidToSet">让安卓改网页</button>
+      </div>
+    </section>
+
+    <!-- 区块 4：异步回推（shell） -->
+    <section class="card">
+      <h3>④ 安卓异步回推（shell）</h3>
+      <div class="form-row">
+        <label class="lbl">Shell 命令</label>
+        <input type="text" v-model="shellCmd" />
+      </div>
+      <select v-model="shellPreset" @change="shellCmd = $event.target.value" class="select">
+        <option value="">— 选个示例命令 —</option>
+        <option value="echo hello from autojs && date">echo + date</option>
+        <option value="ls /sdcard | head -10">ls /sdcard | head -10</option>
+        <option value="getprop ro.product.model">getprop ro.product.model</option>
+      </select>
+      <div class="btn-row">
+        <button class="primary" @click="doShell">执行（异步）</button>
+      </div>
+      <div class="code-row"><pre>{{ out.shellOut }}</pre></div>
+    </section>
+
+    <!-- 区块 5：常见组件一览（精简版，避免过长模板触发 WebView 解析异常） -->
+    <section class="card">
+      <h3>⑤ 常见组件一览</h3>
+      <div class="form-row">
+        <label class="lbl">数字</label>
+        <input type="number" v-model.number="num" />
+        <span class="muted">{{ num }}² = {{ num * num }}</span>
+      </div>
+      <div class="form-row">
+        <label class="lbl">滑块</label>
+        <input type="range" min="0" max="100" v-model="volume" />
+        <span class="muted">{{ volume }}</span>
+      </div>
+      <div class="form-row">
+        <label class="lbl">下拉</label>
+        <select v-model="choice">
+          <option disabled value="">请选择</option>
+          <option>A</option>
+          <option>B</option>
+          <option>C</option>
+        </select>
+        <span class="muted">{{ choice || '—' }}</span>
+      </div>
+      <div class="form-row">
+        <label class="lbl">单选</label>
+        <label><input type="radio" value="男" v-model="gender" /> 男</label>
+        <label><input type="radio" value="女" v-model="gender" /> 女</label>
+        <span class="muted">{{ gender || '—' }}</span>
+      </div>
+      <div class="form-row">
+        <label class="lbl">复选</label>
+        <label><input type="checkbox" value="苹果" v-model="fruits" /> 苹果</label>
+        <label><input type="checkbox" value="香蕉" v-model="fruits" /> 香蕉</label>
+        <label><input type="checkbox" value="西瓜" v-model="fruits" /> 西瓜</label>
+        <span class="muted">{{ fruitsText }}</span>
+      </div>
+      <div class="form-row">
+        <label class="lbl">开关</label>
+        <label><input type="checkbox" v-model="darkMode" /> {{ darkMode ? '开' : '关' }}</label>
+      </div>
+      <div class="form-row">
+        <label class="lbl">多行</label>
+        <textarea v-model="note" rows="3" placeholder="随便写点啥"></textarea>
+      </div>
+    </section>
+
+    <footer class="foot">少写代码，多玩交互 :)</footer>
+  </main>
+</div>
+
+<style>
+  body { background: #f2f3f5; }
+  .topbar { background: linear-gradient(135deg, #4f46e5, #6d28d9); color: #fff; padding: 18px 16px 14px; }
+  .topbar .title { font-size: 18px; font-weight: 700; }
+  .topbar .sub { font-size: 12px; opacity: .85; margin-top: 4px; }
+  main { padding: 12px 12px 60px; }
+  .card { background: #fff; border-radius: 14px; padding: 14px 14px 16px; margin: 10px 0; box-shadow: 0 2px 8px rgba(0,0,0,.04); transition: all .3s; }
+  .card h3 { margin: 0 0 10px; font-size: 15px; color: #111827; }
+  .card .hint { margin: 0 0 10px; font-size: 12px; color: #6b7280; }
+  .form-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+  .form-row .lbl { width: 70px; font-size: 13px; color: #6b7280; flex-shrink: 0; }
+  .form-row input[type=text], .form-row input[type=number], .form-row select, .form-row textarea, .select { flex: 1; min-width: 120px; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 16px; }
+  .form-row textarea { width: 100%; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 10px; }
+  button { padding: 8px 14px; border: 1px solid #e5e7eb; background: #fff; border-radius: 8px; font-size: 13px; }
+  button.primary { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+  .code-row pre { background: #0b1020; color: #d1d5db; padding: 10px; border-radius: 8px; font-size: 12px; margin: 0; max-height: 200px; overflow: auto; }
+  .ticks { list-style: none; padding: 0; margin: 0 0 10px; max-height: 160px; overflow: auto; }
+  .ticks li { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed #f1f5f9; font-size: 13px; }
+  .ticks .dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; }
+  .ticks .bat { margin-left: auto; color: #6b7280; font-size: 12px; }
+  .big-msg { background: #fef3c7; color: #92400e; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 600; margin: 6px 0 10px; transition: all .3s; }
+  .card.flash .big-msg { background: #dcfce7; color: #166534; transform: scale(1.02); }
+  .select { width: 100%; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; margin: 4px 0 10px; background: #fff; }
+  .muted { color: #6b7280; font-size: 12px; }
+  .foot { text-align: center; color: #9ca3af; font-size: 12px; padding: 24px 0 8px; }
+</style>
+
+<script>
+  const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+  createApp({
+    setup() {
+      const toastText = ref('你好，AutoJS');
+      const out = reactive({ callOut: '', shellOut: '' });
+      const ticks = ref([]);
+      const pageMsg = AJS.useStore('pageMsg');
+      const shellCmd = ref('echo hello && date');
+      const shellPreset = ref('');
+      const flashing = ref(false);
+      const greeting = ref('初始化中...');
+
+      const num = ref(2);
+      const volume = ref(30);
+      const choice = ref('');
+      const gender = ref('');
+      const fruits = ref([]);
+      const darkMode = ref(false);
+      const note = ref('');
+      const fruitsText = computed(() => fruits.value.join('、') || '—');
+
+      function logCall(name, r) {
+        out.callOut = '[' + name + '] ' + JSON.stringify(r, null, 2);
+        AJS.call('log', { text: 'CALL ' + name + ' → ' + JSON.stringify(r).slice(0, 200) });
+      }
+      function doToast() { logCall('toast', AJS.call('toast', { text: toastText.value })); }
+      function doDeviceInfo() { logCall('deviceInfo', AJS.call('deviceInfo')); }
+      function doStartPush() { AJS.call('startPush'); }
+      function doStopPush()  { AJS.call('stopPush'); }
+      function askAndroidToSet() {
+        flashing.value = false;
+        AJS.call('testSet', { msg: '安卓刚刚改了我！' });
+        setTimeout(() => { flashing.value = false; }, 1200);
+      }
+      function doShell() {
+        out.shellOut = '提交中...';
+        AJS.call('shell', { cmd: shellCmd.value }, function (data) {
+          out.shellOut = JSON.stringify(data, null, 2);
+        });
+      }
+
+      AJS.on('tick', function (data) {
+        ticks.value.unshift(data);
+        if (ticks.value.length > 8) ticks.value.pop();
+      });
+
+      pageMsg.value = '（点下面按钮让安卓改我）';
+
+      watch(pageMsg, (v) => {
+        AJS.call('log', { text: 'STORE changed → ' + v });
+        flashing.value = true;
+        setTimeout(() => { flashing.value = false; }, 800);
+      });
+
+      onMounted(() => {
+        greeting.value = 'Vue ' + Vue.version + ' 已挂载';
+        doDeviceInfo();
+        doStartPush();
+      });
+
+      return {
+        toastText, out, ticks, pageMsg, shellCmd, shellPreset, flashing, greeting,
+        num, volume, choice, gender, fruits, darkMode, note, fruitsText,
+        doToast, doDeviceInfo, doStartPush, doStopPush, askAndroidToSet, doShell,
+      };
+    }
+  }).mount('#app');
+</script>

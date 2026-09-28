@@ -1,0 +1,6 @@
+/* MARK:TXT-AS-JS — 本文件后缀是 .txt，内容却是真正的 JavaScript 代码 */
+function probeFunction(a, b) {
+    return a + b;
+}
+var probeConfig = { ext: "txt", content: "javascript" };
+/* 判读：若它是明文 → 判定依据是【后缀】，打包器不看内容里写了什么 */

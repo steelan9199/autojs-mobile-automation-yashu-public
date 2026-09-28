@@ -1,0 +1,17 @@
+# 临时目录（用完即删，不进版本库）；临时文件一律放技能根 temp/
+temp/
+
+# 运行时产物与依赖，不进版本库
+node_modules/
+scripts/task-results/
+scripts/uploads/
+*.log
+scripts/task_records.jsonl
+.vscode/settings.json
+
+# 改造前的本地备份（改 SKILL.md / references 大文档前自动生成），不进版本库
+_backup/
+scripts/.skill-cost-history.jsonl
+# 授权文件与试用计数（运行时生成，不进版本库）
+license-key.txt
+.cache_*

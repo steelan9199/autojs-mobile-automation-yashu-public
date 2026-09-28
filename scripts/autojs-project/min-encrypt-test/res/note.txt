@@ -1,0 +1,3 @@
+note-marker-DDD
+本文件是 .txt，也被写进了 project.json 的 assets 数组。
+用来观察：非 .js 的资源放进 assets 后，在 APK 里的落点与形态是否变化。

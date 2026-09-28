@@ -1,0 +1,21 @@
+{
+  "name": "enc-probe",
+  "main": "main.js",
+  "packageName": "com.musk.encprobe",
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "assets": [],
+  "useFeatures": [],
+  "launchConfig": {
+    "displaySplash": true,
+    "splashText": "后缀加密探测",
+    "hideLogs": false
+  },
+  "ignore": [
+    "/.internal/",
+    "/.data/",
+    "/build/",
+    "/node_modules/",
+    "build"
+  ]
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- MARK:SVG — 验证 .svg（本质是 XML 文本）是否为明文 -->
+  <title>enc-probe svg 探针</title>
+  <rect x="1" y="1" width="14" height="14" rx="3" fill="#0969da"/>
+  <path d="M4 8h8M8 4v8" stroke="#ffffff" stroke-width="1.5"/>
+</svg>

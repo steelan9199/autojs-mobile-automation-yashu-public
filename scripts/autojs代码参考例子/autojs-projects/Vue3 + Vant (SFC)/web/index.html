@@ -1,0 +1,76 @@
+<html>
+
+<body>
+<div id="app"></div>
+<link rel="stylesheet" href="https://unpkg.com/vant@4/lib/index.css"/>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/vue3-sfc-loader@0.8.4/dist/vue3-sfc-loader.js"></script>
+<script src="https://unpkg.com/vant@4/lib/vant.min.js"></script>
+<script src="autojs://sdk/v1.js"></script>
+<script>
+    let { loadModule } = window['vue3-sfc-loader'];
+
+    // 把 loader 请求的模块路径规范化为 web/ 目录下的相对路径：
+    // 去掉前导 "/" 和 ?query / #hash，避免 files.join 拼接出错
+    function cleanModulePath(url) {
+        return String(url).split('?')[0].split('#')[0].replace(/^\/+/, '');
+    }
+
+    let options = {
+        // main.vue 里 import { ref } from 'vue' 时从这两个模块取
+        moduleCache: {
+            vue: Vue,
+            vant: vant,
+        },
+        async getFile(url) {
+            let getContentData;
+            if (typeof $autojs !== 'undefined') {
+                // AutoJS 工程内：走安卓侧 jsBridge 的 'fetch' handler，读 web/ 下本地文件
+                let res = await $autojs.invoke('fetch', { path: cleanModulePath(url) });
+                getContentData = (asBinary) => asBinary ? str2ab(res) : res;
+            } else {
+                // 浏览器直开（纯调试用）：走网络 fetch
+                let res = await fetch(url);
+                if (!res.ok) {
+                    throw Object.assign(new Error(res.statusText + ' ' + url), { res });
+                }
+                getContentData = (asBinary) => asBinary ? res.arrayBuffer() : res.text();
+            }
+            return { getContentData };
+
+            function str2ab(str) {
+                let buf = new ArrayBuffer(str.length * 2); // 2 bytes for each char
+                let bufView = new Uint16Array(buf);
+                for (let i = 0, strLen = str.length; i < strLen; i++) {
+                    bufView[i] = str.charCodeAt(i);
+                }
+                return buf;
+            }
+        },
+        addStyle(textContent) {
+            // SFC 里的 <style> 内容由这里注入页面
+            let style = Object.assign(document.createElement('style'), { textContent });
+            let ref = document.head.getElementsByTagName('style')[0] || null;
+            document.head.insertBefore(style, ref);
+        },
+    };
+
+    loadModule('/main.vue', options)
+        .then((component) => {
+            let app = Vue.createApp(component);
+            app.use(vant); // 全局注册 Vant 4 组件（模板里直接用 <van-xxx>）
+            app.mount('#app');
+        })
+        .catch((err) => {
+            console.error('loadModule failed:', err);
+            let appEl = document.getElementById('app');
+            if (appEl) {
+                appEl.innerHTML = '<p style="padding:24px;color:#c0392b;">main.vue 加载失败: ' +
+                    (err && err.message ? err.message : err) + '</p>';
+            }
+        });
+</script>
+</body>
+
+</html>

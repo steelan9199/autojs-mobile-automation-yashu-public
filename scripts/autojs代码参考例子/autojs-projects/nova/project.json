@@ -1,0 +1,12 @@
+{
+  "name": "nova",
+  "main": "main.js",
+  "packageName": "com.pony.nova",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "ignore": [
+    "/node_modules/",
+    "/.git/",
+    "/temp/"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "min-encrypt-test",
+  "main": "main.js",
+  "packageName": "com.musk.minencrypt",
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "assets": [
+    "data.js",
+    "res/note.txt"
+  ],
+  "encryptLevel": 0,
+  "useFeatures": [],
+  "launchConfig": {
+    "displaySplash": true,
+    "splashText": "加密探测",
+    "hideLogs": false
+  },
+  "ignore": [
+    "/.internal/",
+    "/.data/",
+    "/build/",
+    "/node_modules/",
+    "build"
+  ]
+}
