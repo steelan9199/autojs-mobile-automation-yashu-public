@@ -41,9 +41,6 @@ args: { "limit": "number" }
 > 识别只认 `source`/`cwd` 的结构特征、**不认包名**，故路线A（APK）与路线B（AutoJs6 跑客户端源码）通吃，改包名/自建 APK 也不会漏保护；
 > 保守优先：判不准一律当非客户端（绝不把用户自己的业务脚本误标成客户端）。
 
-> 已移除旧的 `name` 派生字段：它由 `files.getName(source)` 算出，不是原始信息，且语义有歧义
-> （`ScriptSource.name` 不带扩展名，与 `files.getName()` 结果不一致）。需要名字时请自行从 `source` 截取。
-
 ## 错误处理与兜底
 - `engines.all()` 取不到 → 当作空数组，回 `{ok:1, count:0, total:0, engines:[]}`（视为没有运行实例）。
 - 单个引擎的某个字段读取异常 → 该字段置 `null`，**其余字段照常返回**，不中断整体，也不丢弃该条。

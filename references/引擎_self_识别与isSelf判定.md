@@ -14,9 +14,6 @@ read_when:
 判断"某条运行中的引擎是不是当前正在执行这段代码的自己"，**只用 id 单要素比对：`eng.id === myEngine.id`**。
 **绝不能用 `eng === myEngine` 引用相等，也不要再叠加文件名做第二要素。**
 
-> 2026-09-04 修订：本文结论已由「id + 文件名双要素」改为「id 单要素」，理由见 §3 实测证据。
-> 旧的双要素写法不会误判但会漏判（source 读取异常时把「自己」判成非自己，用于停止逻辑即等于自杀），已全面废弃。
-
 ## 1. 错在哪里：`eng === myEngine`
 模板里最直觉的写法：
 ```js
@@ -53,7 +50,7 @@ function safeId(eng) {
 }
 ```
 
-## 3. 为什么废弃「id + 文件名」双要素（真机实测证据）
+## 3. 为什么必须是 id 单要素（真机实测证据）
 
 **决定性证据**：工程场景下实测抓到 **id=11 与 id=12 两个引擎，`source`、`cwd` 完全相同**
 （同一工程 `probe-proj` 被重复启动，`source` 都是 `.../project/probe-proj/main.js`）。
@@ -135,7 +132,6 @@ function safeId(eng) {
   `isSelf` 用 id 单要素、`isClient` 用 `clientRule`（见 §9）。
 - `scripts/tasks/stop-script-by-id/stop-script-by-id.js`：按 id 精确停止；自保护用 id 单要素；
   `myId` 取不到时整体放弃停止；**默认拒停客户端引擎**（`clientRule` 命中即跳过，只有 `forceStopClient:true` 才放行）。
-  **该模板由 `stop-script-by-name` 重命名而来**——名字无法区分重名实例，已废弃按名匹配。
 
 ## 8. 配套链路
 ```

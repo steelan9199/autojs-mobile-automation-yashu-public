@@ -127,11 +127,5 @@ node scripts/run-task.js temp/autojs-npm-probe/builtin-check.js --args '{}'
 
 ## 八、已同步回写的技能文档
 
-| 文档 | 改动 |
-| --- | --- |
-| `references/AI_AutoJS_编码细则.md` §7.8（**新增**） | 本次完整勘误：对照表、三重证据、版本溯源、文档正确部分、`require.resolve`/`node:` 出入、落地方案 |
-| `references/AI_AutoJS_编码细则.md` §7.1 | 原文"唯一命中 `events`"修正为：`events` 是空壳；补齐 `buffer`/`nodejs`；补真正可用的内置模块清单 |
-| `references/AI_AutoJS编码强制规范.md` §1.8 | 同步修正"除 events 外全 Module not found"的旧表述，加文档勘误指针 |
-
-> **本次是对技能既有结论的一次实质性修正**：此前记录的"Node 内置模块只有 `events` 命中"并不准确——
-> 命中的 `events` 是空壳不可用，而真正可用的是 `lodash`。已按实测改正。
+勘误结论已落进 `references/AI_AutoJS_编码细则.md` §7.8（完整对照表、三重证据、版本溯源、
+文档正确部分、`require.resolve`/`node:` 出入、落地方案）与 `AI_AutoJS编码强制规范.md` §1.8。

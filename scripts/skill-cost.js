@@ -179,6 +179,55 @@ function checkRefs(alwaysText) {
   return { missing, dangling };
 }
 
+/** 负向声明扫描：技能禁止「已废弃 / 已被推翻 / 曾要求」这类痕迹（《技能维护与成本判据》§5.2）。
+ *  它们把已删除的旧知识原样抄回上下文，读的人（含 AI）等于把错误知识又收一遍——比不写更坏。
+ *  规则要求一律删干净、只写当前正确规则，历史去翻 git。
+ *  豁免 references/技能维护与成本判据.md 自身（§5.2 必须引述这些被禁词形）。 */
+const NEG_CLAIM_WORDS = [
+  "已废弃",
+  "全面废弃",
+  "勿再使用",
+  "已被推翻",
+  "已推翻",
+  "曾要求",
+  "旧口径",
+  "已作废",
+  "约束作废",
+  "随之作废",
+];
+
+function checkNegativeClaims() {
+  const hits = [];
+  const SKIP_DIR = /^(node_modules|_backup|uploads|task-results|temp|\.git)$/;
+  const walk = (dir, depth) => {
+    if (depth > 6) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (SKIP_DIR.test(e.name)) continue;
+        walk(p, depth + 1);
+        continue;
+      }
+      if (!/\.md$/.test(e.name)) continue;
+      const rel = path.relative(SKILL_DIR, p).replace(/\\/g, "/");
+      if (rel === "references/技能维护与成本判据.md") continue; // 规则文件自身须引述被禁词形
+      const txt = readText(p);
+      if (!txt) continue;
+      txt.split(/\r?\n/).forEach((ln, i) => {
+        if (NEG_CLAIM_WORDS.some((w) => ln.includes(w))) hits.push(`${rel}:${i + 1}`);
+      });
+    }
+  };
+  walk(SKILL_DIR, 0);
+  return hits;
+}
+
 function audit() {
   const always = measure(path.join(SKILL_DIR, "SKILL.md"));
   const fmMatch = always.text.match(/^---\s*\n([\s\S]*?)\n---/);
@@ -391,6 +440,20 @@ function printSummary(result, topN) {
       ? `分节引用待核 ${result.dangling.length} 处（SKILL.md 里找不到该短语）：${result.dangling.slice(0, 6).join(" / ")}`
       : "分节引用完整性：SKILL.md「…」式引用全部对得上 ✅"
   );
+  // 负向声明扫描：把《技能维护与成本判据》§5.2「错误知识删干净、不留痕迹」变成机器可校验，
+  // 防止「已废弃的旧口径…」这类写法把已删掉的旧知识又抄回上下文。
+  try {
+    const neg = checkNegativeClaims();
+    L.push(
+      neg.length
+        ? `⚠️ 负向声明 ${neg.length} 处（禁止「已废弃 / 已被推翻 / 曾要求」类痕迹，见《技能维护与成本判据》§5.2）：${neg
+            .slice(0, 8)
+            .join(" / ")}${neg.length > 8 ? " …" : ""}`
+        : "负向声明扫描：全库无「已废弃 / 已被推翻」类痕迹 ✅"
+    );
+  } catch (e) {
+    L.push(`负向声明自检跳过：${e.message}`);
+  }
   L.push(
     `按需层分类（证据化，不看文件名）：整篇读 ${result.counts.whole} 篇 / Grep 局部读 ${result.counts.grep} 篇 / 未路由 ${result.counts.unrouted} 篇`
   );

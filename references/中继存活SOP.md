@@ -39,7 +39,7 @@ curl -s http://localhost:9421/health
 | health 返回 | 含义 | 下一步 |
 |---|---|---|
 | `{"status":"ok","phone":"connected",...}` | 中继活、手机也连上 | 直接进执行 SOP 第 1 步 |
-| `{"status":"ok","phone":"disconnected",...}` | 中继活、手机没连 | 走 `手机连接排障.md` 五步 |
+| `{"status":"ok","phone":"disconnected",...}` | 中继活、手机没连 | 每 1 秒复查一次，满 5 秒仍断 → 走 `手机连接排障.md` 的统一引导话术（7 步） |
 | 「连接拒绝 / os error 10061 / 空」 | 中继没在跑 | 按第 1 步用 run_in_background 重新拉起 |
 
 辅助确认（可选）：

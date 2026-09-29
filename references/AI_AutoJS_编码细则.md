@@ -683,11 +683,11 @@ node scripts/run-task.js temp/autojs-npm-probe/npm-probe4.js --args '{}'   # 13 
 官方文档 modules 页称「模块加载器**显式识别**以下 Node.js 兼容名称」，并列了 8 个。
 **实测与源码均不支持这一列表**——8 个里真正能用的只有 `lodash`（子集）和 `events`（AutoJs6 版）。
 
-> ⚠️ **本节已于 2026-09-22 第 6 轮修订，推翻上一版的两条错判**（旧版说"只有 lodash 真能用"、"events 是空壳"）：
+> 两条要点：
 > ① `lodash` **不是完整 lodash**，是 **lodash.core 定制构建**，`_.chunk` / `_.template` 等直接抛错；
-> ② `events` **不是空壳**，`require("events")` 返回的就是全局 `events`，是 AutoJs6 的 EventEmitter。
-> **旧判"空壳"的根因是测量方法错误**：`Object.keys()` 对 AutoJs6 的 Java 宿主对象**恒返回 0**，
-> 判成员必须用 `for...in` 或 `Object.getOwnPropertyNames()`。
+> ② `events` 就是 AutoJs6 自己的 EventEmitter——`require("events")` 返回的与全局 `events` 是同一个对象。
+> ⚠️ **判成员不能用 `Object.keys()`**：它对 AutoJs6 的 Java 宿主对象**恒返回 0**，
+> 必须用 `for...in` 或 `Object.getOwnPropertyNames()`。
 
 | 名称 | 全局变量 | `require(名)` | `require("node:"+名)` | 键数 | 功能级判定 |
 | --- | --- | --- | --- | --- | --- |

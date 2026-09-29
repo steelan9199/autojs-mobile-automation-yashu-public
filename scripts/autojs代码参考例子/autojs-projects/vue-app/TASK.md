@@ -6,7 +6,7 @@ args: { "html": "string*", "bridge": "string", "vueSrc": "string", "landscape": 
 
 # vue-app · Vue3 + AutoJS 混合应用模板（当前主线）
 
-**一句话**：html 里的 Vue3 负责界面，AutoJS 负责安卓能力（toast / shell / 剪贴板 / 设备信息 / 定时推送…），中间的双向通信模板全包了。旧模板 `vue-webview` 已废弃，仅留作历史参考。
+**一句话**：html 里的 Vue3 负责界面，AutoJS 负责安卓能力（toast / shell / 剪贴板 / 设备信息 / 定时推送…），中间的双向通信模板全包了。
 
 **实测结论（2026-09-06，小米 M2102K1AC / Android 12 / AutoJS6 / Vue 3.5.42）**：
 
