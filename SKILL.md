@@ -1,7 +1,7 @@
 ---
 name: autojs-mobile-automation-yashu-public
 description: 经 AutoJS 在 Android 手机上自动执行任务。典型触发表达包括:`运行手机任务`、`AI控制手机`、`手机自动化`、`用autojs执行`、`帮我操作手机`、`下发手机任务`；想让 AI 代操作手机、获取手机上的文件、自动跑完手机上的活时也会命中。
-version: 3.2.0
+version: 3.2.1
 ---
 
 # 手机任务执行器（AI → AutoJS）
