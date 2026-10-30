@@ -1,7 +1,7 @@
 ---
 name: ad-claim-loop
-description: "循环看广告领奖：横屏点广告按钮(拉不起来自动重试1次)→等变竖屏→固定等N秒→点领奖按钮→等回横屏，重复指定轮数；任一步校验失败立即停止并回报卡点轮次。"
-args: { "gameX": "number*", "gameY": "number*", "adX": "number*", "adY": "number*", "rounds": "number", "adSec": "number", "probeSec": "number", "settleMs": "number", "settleStepMs": "number" }
+description: "循环看广告领奖：横屏点广告按钮(拉不起来自动重试1次)→等变竖屏→盯屏等广告播完(出现「领取」提前结束)→点领奖按钮(默认重试2次)→等回横屏，重复指定轮数；全程写排查日志(方向/包名/控件bounds/每次点击返回)，任一步失败立即停止并回报卡点。"
+args: { "gameX": "number*", "gameY": "number*", "adX": "number*", "adY": "number*", "rounds": "number", "adSec": "number", "probeSec": "number", "settleMs": "number", "settleStepMs": "number", "startDelaySec": "number", "sampleMs": "number", "claimRetry": "number", "preferTextClick": "number", "probeControls": "number", "logFile": "string" }
 ---
 
 # ad-claim-loop · 看广告领奖循环
@@ -9,7 +9,9 @@ args: { "gameX": "number*", "gameY": "number*", "adX": "number*", "adY": "number
 把「点广告 → 看广告 → 领奖 → 回游戏」这条人工重复链路一次性跑满 N 轮，中途不打扰，
 任一步校验不通过就**立即停止**并回报卡在哪一轮哪一步。
 
-**分类**：长任务类（坐标手势 + 流程控制合体）。纯坐标驱动，不查控件树；
+**分类**：长任务类（坐标手势 + 流程控制合体）。点击仍以**坐标驱动**为主；
+默认只读控件 `bounds` 写进日志（`probeControls=1`，用于核对坐标是否偏），
+需要时设 `preferTextClick=1` 改为「优先点控件树里的领取文字」。
 一次下发在手机端内部循环，PC 侧只收一条终态回执。
 
 ## 使用场景
@@ -33,22 +35,30 @@ args: { "gameX": "number*", "gameY": "number*", "adX": "number*", "adY": "number
 | `gameX` / `gameY` | ✅ | — | **横屏坐标系**下「广告获取」按钮坐标 |
 | `adX` / `adY` | ✅ | — | **竖屏坐标系**下「领取成功」按钮坐标 |
 | `rounds` | | 25 | 轮数，夹取到 1~200 |
-| `adSec` | | 31 | **从点击广告按钮起算**的总等待秒数，夹取到 1~180 |
-| `probeSec` | | 5 | 点广告按钮后查方向的间隔秒数，夹取到 1~60 |
+| `adSec` | | 31 | **从点击广告按钮起算**的广告**最长**等待秒数，夹取到 1~180；出现「领取」文字会提前结束等待 |
+| `probeSec` | | 5 | 点广告按钮后观察方向/包名的窗口秒数，夹取到 1~60 |
 | `settleMs` | | 20000 | 「领取成功」后等回横屏的超时（毫秒），夹取到 1000~30000 |
 | `settleStepMs` | | 1000 | 方向轮询间隔（毫秒），夹取到 250~5000 |
+| `startDelaySec` | | 0 | 启动延迟秒数，夹取到 0~120；下发后需要人工切到游戏界面时设 5~10 |
+| `sampleMs` | | 2000 | 广告期间采样间隔（毫秒），夹取到 500~10000；越小日志越密 |
+| `claimRetry` | | 2 | 点「领取成功」最多尝试次数，夹取到 1~5（两次之间等 3 秒） |
+| `preferTextClick` | | 0 | 1=优先点控件树找到的「领取」文字（找不到再退坐标）；0=纯坐标 |
+| `probeControls` | | 1 | 1=探测控件 bounds 写日志（排查坐标是否偏）；0=完全不查控件树 |
 
 ### 拉起广告的重试规则
 
 点击广告按钮后**不靠一次判定**，而是：
 
-1. 点击 → 等 `probeSec`（默认 5）秒 → 查方向；
-2. 仍横屏 → **再点一次** → 再等 `probeSec` 秒 → 再查方向；
-3. 竖屏 → 广告已正常进入，继续走流程；
-4. 第 2 次后**仍是横屏** → 判定「广告未拉起」→ **立即停止任务**（`stage: ad-not-launched`）。
+1. 点击 → 每秒查一次方向与前台包名，窗口 `probeSec`（默认 5）秒；
+2. 出现**变竖屏**或**前台包名变化** → 判定广告已拉起，继续；
+3. 窗口内都没变 → **再点一次**，重复观察；
+4. 第 2 次仍无变化 → 判定「广告未拉起」→ **立即停止任务**（`stage: ad-not-launched`）。
 
 即最多重试 1 次。广告 SDK 偶发无填充/首次点击不响应，补一次点击能救回大部分情况；
 再失败说明确实拉不起来，继续硬点只会空跑，故停止。
+
+⚠️ **判定依据已从「只看方向」扩为「方向或前台包名变化」**：横屏播放的广告不转竖屏，
+旧逻辑会误判成"未拉起"。
 
 ⚠️ **`settleMs` 已不再用于判定广告拉起**（改由上面的 `probeSec` 两连点判定），
 现仅用于「点击领取成功后等回横屏」。
@@ -64,10 +74,48 @@ args: { "gameX": "number*", "gameY": "number*", "adX": "number*", "adY": "number
 ⚠️ **`settleMs` 别设太小**：点击广告按钮后屏幕要过几秒才被广告 SDK 转成竖屏（加载期间仍是横屏）。
 该判定现已改用 `probeSec` 两连点逻辑（见上），不再受 `settleMs` 影响。
 
-⚠️ **`adSec` 仍是固定盲等**：广告实际总时长 > `adSec` 时，`领取成功` 尚未出现 → 点击落空 →
-紧随其后的「等回横屏」校验失败 → 脚本按设计停止。**这是预期行为，不是 bug**；把 `adSec` 调大即可。
+⚠️ **`adSec` 已从「固定盲等」改为「最长等待」**：等待期间每 `sampleMs` 采样方向/包名/是否出现
+「领取」文字，一旦出现就提前进入点击，不再傻等满 `adSec`。仍保留 `adSec` 作为上限兜底，
+避免等不到文字时无限挂住；实测 31 秒视频建议设 **35**。
+
+⚠️ **`settleMs` 别设太小**：点击广告按钮后屏幕要过几秒才被广告 SDK 转成竖屏（加载期间仍是横屏）。
+该判定现已改用 `probeSec` 两连点逻辑（见上），不再受 `settleMs` 影响。
 
 💡 长任务会先调 `device.keepScreenOn(30min)` 保屏幕常亮，避免中途熄屏导致点击失效。
+
+## 日志与排查（失败先看日志，别猜）
+
+全程写日志到手机 `/storage/emulated/0/脚本/ad-claim-loop.log`（追加，不覆盖历次运行）。
+每行格式：
+
+```
+[00:31:12.480 +18.3s] [轮2] [o=竖屏] [pkg=com.xxx.game] <CLAIM> 控件树命中「领取成功」bounds=1120,150,1260,240 中心=(1190,195) 距配置点 1px 可点
+```
+
+| 标签 | 内容 |
+| --- | --- |
+| `BOOT` | 设备/分辨率/无障碍状态/本次全部生效参数 |
+| `LAUNCH` | 点广告：控件 bounds 与配置坐标的距离、点击返回值、每秒的方向与包名、拉起判定依据 |
+| `WATCH` | 广告期：状态变化（方向/包名/是否出现「领取」）+ 每 10s 心跳 |
+| `CLAIM` | 点领取：命中控件 bounds、坐标距离、点击方式、每次点击返回值 |
+| `WAIT` | 等回横屏：方向/包名的每次变化及已等毫秒 |
+| `PROG` | 上报给 PC 的进度文案（与 `__reportProgress` 同步） |
+| `FAIL` | 失败轮次/阶段 + 失败瞬间的方向、尺寸、包名、领取文字命中情况 |
+
+失败回执带 `log` 字段（日志绝对路径），拉回来看：
+
+```bash
+node scripts/run-task.js download-file --args '{"name":"/storage/emulated/0/脚本/ad-claim-loop.log"}'
+```
+
+排查对照表：
+
+| 日志现象 | 结论 |
+| --- | --- |
+| `CLAIM ... 距配置点 87px` 且控件在别处 | `adX/adY` 偏了，按日志里的 bounds 中心改 |
+| `点击返回=false` | 无障碍没开或被系统拦截（`BOOT` 行会写） |
+| `WATCH 已满 adSec=31s` + `CLAIM 未回到横屏` | 广告比 `adSec` 长或领取按钮未出现，调大 `adSec` / 开 `preferTextClick=1` |
+| `LAUNCH 点击后 5s 方向与包名都没变` | 广告无填充或 `gameX/gameY` 偏了，看该行上方打印的「广告」控件 bounds |
 
 ## 错误处理与兜底
 
@@ -86,7 +134,7 @@ args: { "gameX": "number*", "gameY": "number*", "adX": "number*", "adY": "number
 | --- | --- | --- |
 | `check-landscape` | 轮次开始时不是横屏 | 游戏页未就绪 / 被弹窗盖住 / 已离开游戏 |
 | `ad-not-launched` | 连点 2 次广告按钮、各等 `probeSec` 秒后仍横屏 | 广告无填充 / 按钮坐标偏了 / 点击被拦截 |
-| `wait-back-landscape` | 点了领奖按钮但没回横屏 | `adSec` 太短广告没播完 / 领奖坐标偏了 |
+| `wait-back-landscape` | 点了领奖按钮（默认最多 2 次，间隔 3s）但都没回横屏 | `adSec` 太短广告没播完 / 领奖坐标偏了（看 `CLAIM` 行的 bounds 对比）/ 领取按钮还没出现 |
 
 停止后屏幕会**停在失败现场**，AI 可立即下发 `screenshot` 看当时画面，据此修正坐标或 `adSec`。
 
